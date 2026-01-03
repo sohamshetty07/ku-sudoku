@@ -1,6 +1,8 @@
+/** @type {import('postcss-load-config').Config} */
 const config = {
   plugins: {
-    "@tailwindcss/postcss": {},
+    "@tailwindcss/postcss": {}, // Note the @ symbol here. This is the new v4 connector.
+    autoprefixer: {},
   },
 };
 
