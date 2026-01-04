@@ -21,75 +21,75 @@ export default function SudokuGrid({
 }: SudokuGridProps) {
   if (!boardState || !initialBoard) return null;
 
-  // 1. Get the value of the currently selected cell (if any)
-  // We use this to highlight matching numbers across the board
   const selectedValue =
     selectedCell && boardState[selectedCell.row][selectedCell.col] !== 0
       ? boardState[selectedCell.row][selectedCell.col]
       : null;
 
   return (
-    <div className="grid grid-cols-9 gap-1 p-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md shadow-2xl select-none">
+    // Container: Removed 'aspect-square' and 'w-full' reliability. 
+    // We let the fixed-size cells define the total size, wrapped in a fit-content border.
+    <div className="grid grid-cols-9 bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
-          // --- LOGIC: DETERMINE CELL STATUS ---
           
           const isFixed = initialBoard[rowIndex][colIndex] !== 0;
           const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
           const isError = errorCells.has(`${rowIndex}-${colIndex}`);
           
-          // Crosshair Logic: Is this cell in the same Row or Col as selection?
           const isRelated = selectedCell 
             ? (selectedCell.row === rowIndex || selectedCell.col === colIndex) && !isSelected
             : false;
 
-          // Match Logic: Does this cell have the same number as the selection?
           const isSameValue = selectedValue !== null && cellValue === selectedValue && !isSelected;
 
-          // Box Borders: Thicker borders for 3x3 grids
-          const borderRight = (colIndex + 1) % 3 === 0 && colIndex !== 8 ? "border-r-2 border-r-white/20" : "";
-          const borderBottom = (rowIndex + 1) % 3 === 0 && rowIndex !== 8 ? "border-b-2 border-b-white/20" : "";
+          // --- BORDER LOGIC ---
+          const isRightEdge = colIndex === 8;
+          const isBottomEdge = rowIndex === 8;
+          
+          // Thicker borders for 3x3 sections
+          const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
+          const isThickBottom = (rowIndex + 1) % 3 === 0 && !isBottomEdge;
 
-          // --- STYLING ---
+          const borderClasses = `
+            ${!isRightEdge ? (isThickRight ? "border-r-2 border-r-white/30" : "border-r border-r-white/10") : ""}
+            ${!isBottomEdge ? (isThickBottom ? "border-b-2 border-b-white/30" : "border-b border-b-white/10") : ""}
+          `;
+
           return (
-            <motion.div
+            <div
               key={`${rowIndex}-${colIndex}`}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2, delay: (rowIndex * 9 + colIndex) * 0.005 }}
               onClick={() => onCellClick(rowIndex, colIndex)}
+              // RESTORED: Fixed width/height classes to prevent collapse
               className={`
                 relative flex items-center justify-center 
                 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 
-                text-lg sm:text-xl md:text-2xl font-mono cursor-pointer transition-all duration-200
-                rounded-md
-                ${borderRight} ${borderBottom}
+                text-lg sm:text-xl md:text-2xl font-mono cursor-pointer transition-colors duration-75
+                ${borderClasses}
                 
-                ${/* 1. SELECTION STATE (High Priority) */ ""}
-                ${isSelected ? "bg-neon-cyan/20 ring-2 ring-neon-cyan z-10 scale-105 shadow-[0_0_15px_rgba(6,182,212,0.4)]" : ""}
-                
-                ${/* 2. MATCHING NUMBER STATE (High Priority) */ ""}
-                ${!isSelected && isSameValue ? "bg-neon-cyan/10 text-neon-cyan font-bold shadow-[inset_0_0_10px_rgba(6,182,212,0.2)]" : ""}
-
-                ${/* 3. ERROR STATE */ ""}
-                ${isError && !isSelected ? "bg-neon-red/10 text-neon-red animate-pulse" : ""}
-                
-                ${/* 4. CROSSHAIR GUIDES (Low Priority) */ ""}
+                ${/* STATES */ ""}
+                ${isSelected ? "bg-neon-cyan/20 z-10" : ""}
+                ${!isSelected && isSameValue ? "bg-neon-cyan/10 text-neon-cyan font-bold" : ""}
+                ${isError && !isSelected ? "bg-neon-red/10 text-neon-red" : ""}
                 ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
-
-                ${/* 5. DEFAULT STATES */ ""}
                 ${!isSelected && !isRelated && !isSameValue ? "hover:bg-white/5" : ""}
-                ${isFixed ? "font-bold" : "font-light"}
-                ${!isFixed && !isError && !isSameValue && !isSelected ? "text-neon-cyan" : ""}
-                ${isFixed && !isSameValue && !isSelected ? "text-white/80" : ""}
+                
+                ${/* TYPOGRAPHY */ ""}
+                ${isFixed ? "font-bold text-white/90" : "font-semibold text-neon-cyan"}
               `}
             >
-              {/* RENDER NUMBER OR NOTES */}
+              {isSelected && (
+                <motion.div 
+                  layoutId="selection-ring" 
+                  className="absolute inset-0 border-2 border-neon-cyan z-20 pointer-events-none" 
+                  transition={{ duration: 0.15 }} 
+                />
+              )}
+
               {cellValue !== 0 ? (
                 cellValue
               ) : (
-                /* Note Grid (3x3 mini grid inside cell) */
-                <div className="grid grid-cols-3 gap-[1px] w-full h-full p-[2px] pointer-events-none">
+                <div className="grid grid-cols-3 w-full h-full p-[1px] pointer-events-none">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
                     <div key={n} className="flex items-center justify-center">
                       {notes[`${rowIndex}-${colIndex}`]?.includes(n) && (
@@ -101,7 +101,7 @@ export default function SudokuGrid({
                   ))}
                 </div>
               )}
-            </motion.div>
+            </div>
           );
         })
       )}

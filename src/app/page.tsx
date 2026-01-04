@@ -42,7 +42,7 @@ export default function Home() {
 
         {/* Footer info */}
         <p className="text-xs text-white/20 font-mono mt-8">
-          v1.0 • Offline First
+          v1.0 • AD Free • Open Source
         </p>
       </div>
 

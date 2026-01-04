@@ -12,10 +12,11 @@ import Button from "@/components/ui/Button";
 import Link from "next/link";
 
 // --- CONFIGURATION RULES ---
+// Updated to include 'eloPenalty'
 const GAME_CONFIG = {
-  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0 },
-  Standard: { holes: 40, lives: 3, eloReward: 15 },
-  Mastery:  { holes: 55, lives: 1, eloReward: 30 },
+  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0 },
+  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5 },
+  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10 },
 };
 
 const formatTime = (seconds: number) => {
@@ -53,18 +54,38 @@ function GameContent() {
   const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
   const isGameActive = !isGameOver && !isWon;
 
+  // --- LOGIC: Calculate Completed Numbers ---
+  // A number is hidden ONLY if there are 9 of them AND they are all correct according to the solution.
+  const completedNumbers = useMemo(() => {
+    if (!boardState || !solution) return [];
+    
+    const counts = new Array(10).fill(0);
+    
+    // Check every cell
+    boardState.forEach((row, rIndex) => {
+      row.forEach((num, cIndex) => {
+        // Only count the number if it matches the solution at this position
+        if (num !== 0 && num === solution[rIndex][cIndex]) {
+          counts[num]++;
+        }
+      });
+    });
+
+    // Filter for numbers that appear 9 times correctly
+    return counts
+      .map((count, num) => (count === 9 ? num : -1))
+      .filter(n => n !== -1);
+  }, [boardState, solution]);
+
   // --- VISUALS: DYNAMIC BACKGROUND ---
   const backgroundClass = useMemo(() => {
     switch (mode) {
       case 'Relaxed':
-        // Soft Teal/Cyan Glow
         return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900/40 via-midnight to-midnight";
       case 'Mastery':
-        // Intense Purple/Rose Void (Darker edges)
         return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/40 via-midnight to-black";
       case 'Standard':
       default:
-        // Classic Deep Blue/Indigo Glow
         return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-midnight to-midnight";
     }
   }, [mode]);
@@ -133,12 +154,16 @@ function GameContent() {
     }
   }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, mode, saveGame, cellTimes]);
 
-  // --- CLEANUP ON GAME OVER ---
+  // --- CLEANUP ON GAME OVER & PENALTY ---
   useEffect(() => {
     if (isGameOver) {
+      // PENALTY LOGIC: Deduct points for losing
+      if (config.eloPenalty > 0) {
+        updateElo(-config.eloPenalty);
+      }
       clearGame();
     }
-  }, [isGameOver, clearGame]);
+  }, [isGameOver, clearGame, config.eloPenalty, updateElo]);
 
   // --- TIMER (Global) ---
   useEffect(() => {
@@ -334,7 +359,12 @@ function GameContent() {
 
       {/* INPUTS */}
       <div className={`w-full max-w-md flex flex-col gap-6 transition-all duration-500 ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}`}>
-        <NumberPad onNumberClick={handleInput} onDelete={handleDelete} />
+        {/* Pass completedNumbers to NumberPad to hide finished numbers */}
+        <NumberPad 
+          onNumberClick={handleInput} 
+          onDelete={handleDelete} 
+          completedNumbers={completedNumbers}
+        />
         <div className="flex gap-4 w-full justify-center">
           <Button variant="secondary" className="w-1/3" onClick={handleUndo} disabled={history.length === 0}>Undo</Button>
           <Button variant={isNoteMode ? "primary" : "secondary"} className="w-1/3" onClick={() => setIsNoteMode(!isNoteMode)}>

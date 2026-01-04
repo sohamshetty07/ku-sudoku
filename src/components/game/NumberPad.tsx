@@ -1,36 +1,47 @@
 "use client";
 
 import React from "react";
-import { Delete } from "lucide-react"; // We need an icon for the delete button
+import { Delete } from "lucide-react"; 
 
 type NumberPadProps = {
   onNumberClick: (num: number) => void;
   onDelete: () => void;
+  completedNumbers?: number[]; // <--- New Prop
 };
 
-export default function NumberPad({ onNumberClick, onDelete }: NumberPadProps) {
+export default function NumberPad({ 
+  onNumberClick, 
+  onDelete, 
+  completedNumbers = [] 
+}: NumberPadProps) {
   
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 
   return (
     <div className="grid grid-cols-5 gap-3 w-full max-w-md mt-6 px-2">
       {/* Map numbers 1-9 */}
-      {numbers.map((num) => (
-        <button
-          key={num}
-          onClick={() => onNumberClick(num)}
-          className="
-            flex h-14 items-center justify-center rounded-xl 
-            bg-glass border border-glass-border 
-            text-2xl font-mono text-neon-cyan font-bold
-            shadow-lg backdrop-blur-md transition-all
-            active:scale-95 active:bg-neon-cyan/20
-            hover:bg-white/5
-          "
-        >
-          {num}
-        </button>
-      ))}
+      {numbers.map((num) => {
+        // Check if this number is "done" (appears 9 times on board)
+        const isHidden = completedNumbers.includes(num);
+
+        return (
+          <div key={num} className={isHidden ? "invisible pointer-events-none" : ""}>
+            <button
+              onClick={() => onNumberClick(num)}
+              className="
+                flex h-14 w-full items-center justify-center rounded-xl 
+                bg-glass border border-glass-border 
+                text-2xl font-mono text-neon-cyan font-bold
+                shadow-lg backdrop-blur-md transition-all
+                active:scale-95 active:bg-neon-cyan/20
+                hover:bg-white/5
+              "
+            >
+              {num}
+            </button>
+          </div>
+        );
+      })}
 
       {/* The Delete Button (Takes the last slot) */}
       <button
