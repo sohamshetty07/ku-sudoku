@@ -12,11 +12,11 @@ import Button from "@/components/ui/Button";
 import Link from "next/link";
 
 // --- CONFIGURATION RULES ---
-// Updated to include 'eloPenalty'
+// 1. Updated with Scoring Parameters (Base Score & Par Time)
 const GAME_CONFIG = {
-  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0 },
-  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5 },
-  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10 },
+  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 20, parTime: 600 }, // 10m Par
+  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 }, // 5m Par, 30pts Base
+  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10, baseScore: 100, parTime: 900 }, // 15m Par
 };
 
 const formatTime = (seconds: number) => {
@@ -50,28 +50,42 @@ function GameContent() {
 
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isWon, setIsWon] = useState<boolean>(false);
+  
+  // NEW: State to hold the calculated score for the modal
+  const [finalScore, setFinalScore] = useState<number>(0);
 
   const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
   const isGameActive = !isGameOver && !isWon;
 
+  // --- LOGIC: Score Calculator ---
+  const calculateScore = useCallback((elapsed: number, mistakesCount: number) => {
+    const { baseScore, parTime } = config;
+    
+    // 1. Time Bonus: +1 point per 10s saved (Max 0 if over time)
+    const timeDiff = Math.max(0, parTime - elapsed);
+    const timeBonus = Math.floor(timeDiff / 10);
+    
+    // 2. Penalty: -5 points per mistake
+    const mistakePenalty = mistakesCount * 5;
+
+    // 3. Total (Min 0)
+    return Math.max(0, baseScore + timeBonus - mistakePenalty);
+  }, [config]);
+
   // --- LOGIC: Calculate Completed Numbers ---
-  // A number is hidden ONLY if there are 9 of them AND they are all correct according to the solution.
   const completedNumbers = useMemo(() => {
     if (!boardState || !solution) return [];
     
     const counts = new Array(10).fill(0);
     
-    // Check every cell
     boardState.forEach((row, rIndex) => {
       row.forEach((num, cIndex) => {
-        // Only count the number if it matches the solution at this position
         if (num !== 0 && num === solution[rIndex][cIndex]) {
           counts[num]++;
         }
       });
     });
 
-    // Filter for numbers that appear 9 times correctly
     return counts
       .map((count, num) => (count === 9 ? num : -1))
       .filter(n => n !== -1);
@@ -93,12 +107,9 @@ function GameContent() {
   // --- INIT & RESUME LOGIC ---
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
-    
-    // Read directly to avoid loops
     const savedGame = useStore.getState().activeGame;
 
     if (shouldResume && savedGame) {
-      // RESUME
       setInitialBoard(savedGame.initialBoard);
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
@@ -107,13 +118,12 @@ function GameContent() {
       setNotes(savedGame.notes);
       setHistory(savedGame.history);
       setCellTimes(savedGame.cellTimes || {}); 
-      
       setErrorCells(new Set());
       setSelectedCell(null);
       setIsNoteMode(false);
       setIsWon(false);
+      setFinalScore(0);
     } else {
-      // START FRESH
       const { initial, solved } = generateSudoku(config.holes);
       setInitialBoard(initial);
       setSolution(solved);
@@ -127,7 +137,7 @@ function GameContent() {
       setIsNoteMode(false);
       setTimeElapsed(0);
       setIsWon(false);
-      
+      setFinalScore(0);
       clearGame();
     }
   }, [config.holes, searchParams, clearGame]);
@@ -157,7 +167,6 @@ function GameContent() {
   // --- CLEANUP ON GAME OVER & PENALTY ---
   useEffect(() => {
     if (isGameOver) {
-      // PENALTY LOGIC: Deduct points for losing
       if (config.eloPenalty > 0) {
         updateElo(-config.eloPenalty);
       }
@@ -250,10 +259,18 @@ function GameContent() {
       });
 
       if (checkVictory(newBoard, solution)) {
+        // --- VICTORY! ---
+        // 1. Calculate Score
+        const score = calculateScore(timeElapsed, mistakes);
+        setFinalScore(score);
+        
+        // 2. Set Won State
         setIsWon(true);
         clearGame(); 
-        if (config.eloReward > 0) {
-          updateElo(config.eloReward);
+        
+        // 3. Update Global Elo with Calculated Score
+        if (score > 0) {
+          updateElo(score);
         }
       }
 
@@ -268,7 +285,7 @@ function GameContent() {
       newBoard[row][col] = num;
       setBoardState(newBoard);
     }
-  }, [isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, notes, errorCells, mistakes, saveToHistory, checkVictory, config.eloReward, updateElo, clearGame]);
+  }, [isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, notes, errorCells, mistakes, saveToHistory, checkVictory, config.eloReward, updateElo, clearGame, calculateScore, timeElapsed]);
 
   // --- DELETE & KEYBOARD ---
   const handleDelete = useCallback(() => {
@@ -309,7 +326,6 @@ function GameContent() {
   if (!boardState || !initialBoard) return <div className="text-white text-center mt-20">Entering the Void...</div>;
 
   return (
-    // Updated Main Container with dynamic backgroundClass
     <main className={`relative flex min-h-screen flex-col items-center justify-center p-4 pb-8 transition-colors duration-1000 ${backgroundClass}`}>
       
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
@@ -321,6 +337,7 @@ function GameContent() {
           onRetry={startNewGame}
           cellTimes={cellTimes} 
           finalBoard={boardState}
+          score={finalScore} // <--- Pass the calculated score
         />
       )}
 
@@ -359,7 +376,6 @@ function GameContent() {
 
       {/* INPUTS */}
       <div className={`w-full max-w-md flex flex-col gap-6 transition-all duration-500 ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}`}>
-        {/* Pass completedNumbers to NumberPad to hide finished numbers */}
         <NumberPad 
           onNumberClick={handleInput} 
           onDelete={handleDelete} 
