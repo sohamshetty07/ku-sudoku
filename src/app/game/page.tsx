@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
-import { useSearchParams } from "next/navigation"; 
+import { useSearchParams, useRouter } from "next/navigation"; 
 import { generateSudoku } from "@/lib/sudoku/generator";
 import { useStore, type GameState } from "@/lib/store"; 
 import SudokuGrid from "@/components/game/SudokuGrid";
@@ -9,14 +9,13 @@ import NumberPad from "@/components/game/NumberPad";
 import GameOverModal from "@/components/game/GameOverModal";
 import VictoryModal from "@/components/game/VictoryModal";
 import Button from "@/components/ui/Button";
-import Link from "next/link";
+// Removed Trophy import as it is no longer needed
 
 // --- CONFIGURATION RULES ---
-// 1. Updated with Scoring Parameters (Base Score & Par Time)
 const GAME_CONFIG = {
-  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 20, parTime: 600 }, // 10m Par
-  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 }, // 5m Par, 30pts Base
-  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10, baseScore: 100, parTime: 900 }, // 15m Par
+  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 10, parTime: 600 },
+  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 },
+  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10, baseScore: 60, parTime: 900 },
 };
 
 const formatTime = (seconds: number) => {
@@ -27,9 +26,11 @@ const formatTime = (seconds: number) => {
 
 function GameContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const mode = (searchParams.get("mode") as keyof typeof GAME_CONFIG) || "Standard";
   const config = GAME_CONFIG[mode];
 
+  // --- STORE ---
   const { updateElo, saveGame, clearGame } = useStore();
 
   // --- STATE ---
@@ -51,7 +52,6 @@ function GameContent() {
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isWon, setIsWon] = useState<boolean>(false);
   
-  // NEW: State to hold the calculated score for the modal
   const [finalScore, setFinalScore] = useState<number>(0);
 
   const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
@@ -60,24 +60,16 @@ function GameContent() {
   // --- LOGIC: Score Calculator ---
   const calculateScore = useCallback((elapsed: number, mistakesCount: number) => {
     const { baseScore, parTime } = config;
-    
-    // 1. Time Bonus: +1 point per 10s saved (Max 0 if over time)
     const timeDiff = Math.max(0, parTime - elapsed);
     const timeBonus = Math.floor(timeDiff / 10);
-    
-    // 2. Penalty: -5 points per mistake
     const mistakePenalty = mistakesCount * 5;
-
-    // 3. Total (Min 0)
     return Math.max(0, baseScore + timeBonus - mistakePenalty);
   }, [config]);
 
-  // --- LOGIC: Calculate Completed Numbers ---
+  // --- LOGIC: Completed Numbers ---
   const completedNumbers = useMemo(() => {
     if (!boardState || !solution) return [];
-    
     const counts = new Array(10).fill(0);
-    
     boardState.forEach((row, rIndex) => {
       row.forEach((num, cIndex) => {
         if (num !== 0 && num === solution[rIndex][cIndex]) {
@@ -85,10 +77,7 @@ function GameContent() {
         }
       });
     });
-
-    return counts
-      .map((count, num) => (count === 9 ? num : -1))
-      .filter(n => n !== -1);
+    return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
   // --- VISUALS: DYNAMIC BACKGROUND ---
@@ -107,9 +96,12 @@ function GameContent() {
   // --- INIT & RESUME LOGIC ---
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
-    const savedGame = useStore.getState().activeGame;
+    
+    const storeState = useStore.getState();
+    const savedGame = storeState.activeGame;
 
     if (shouldResume && savedGame) {
+      // RESUME
       setInitialBoard(savedGame.initialBoard);
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
@@ -118,12 +110,22 @@ function GameContent() {
       setNotes(savedGame.notes);
       setHistory(savedGame.history);
       setCellTimes(savedGame.cellTimes || {}); 
+      
       setErrorCells(new Set());
       setSelectedCell(null);
       setIsNoteMode(false);
       setIsWon(false);
       setFinalScore(0);
     } else {
+      // START FRESH
+      
+      // ABANDONMENT PENALTY
+      if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
+        const penalty = savedGame.mistakes * 5;
+        storeState.updateElo(-penalty);
+        console.log(`Abandoned game penalty applied: -${penalty}`);
+      }
+
       const { initial, solved } = generateSudoku(config.holes);
       setInitialBoard(initial);
       setSolution(solved);
@@ -138,6 +140,7 @@ function GameContent() {
       setTimeElapsed(0);
       setIsWon(false);
       setFinalScore(0);
+      
       clearGame();
     }
   }, [config.holes, searchParams, clearGame]);
@@ -158,13 +161,15 @@ function GameContent() {
         mistakes,
         timeElapsed,
         difficulty: mode as 'Relaxed' | 'Standard' | 'Mastery',
-        cellTimes
+        cellTimes,
+        isGameOver, 
+        isWon
       };
       saveGame(currentGameState);
     }
-  }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, mode, saveGame, cellTimes]);
+  }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, mode, saveGame, cellTimes, isGameOver, isWon]);
 
-  // --- CLEANUP ON GAME OVER & PENALTY ---
+  // --- CLEANUP ON GAME OVER ---
   useEffect(() => {
     if (isGameOver) {
       if (config.eloPenalty > 0) {
@@ -197,6 +202,11 @@ function GameContent() {
     }
     return () => clearInterval(interval);
   }, [isGameActive, selectedCell]);
+
+  // --- HANDLER: Exit Game ---
+  const handleExit = () => {
+    router.push('/');
+  };
 
   // --- HISTORY ---
   const saveToHistory = useCallback(() => {
@@ -260,15 +270,12 @@ function GameContent() {
 
       if (checkVictory(newBoard, solution)) {
         // --- VICTORY! ---
-        // 1. Calculate Score
         const score = calculateScore(timeElapsed, mistakes);
         setFinalScore(score);
         
-        // 2. Set Won State
         setIsWon(true);
         clearGame(); 
         
-        // 3. Update Global Elo with Calculated Score
         if (score > 0) {
           updateElo(score);
         }
@@ -337,13 +344,16 @@ function GameContent() {
           onRetry={startNewGame}
           cellTimes={cellTimes} 
           finalBoard={boardState}
-          score={finalScore} // <--- Pass the calculated score
+          score={finalScore} 
         />
       )}
 
       {/* TOP BAR */}
       <div className="flex w-full max-w-md items-center justify-between mb-6 px-1">
-        <Link href="/" className="text-white/50 hover:text-white transition">← Exit</Link>
+        <button onClick={handleExit} className="text-white/50 hover:text-white transition">← Exit</button>
+        
+        {/* Removed Live Elo Display Here - Clean Look */}
+
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm">{mode}</div>
           <div className="font-mono text-sm text-white/80 w-12 text-center">{formatTime(timeElapsed)}</div>
