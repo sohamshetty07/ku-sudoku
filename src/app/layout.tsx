@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google"; 
 import "./globals.css";
+import ThemeBackground from "@/components/layout/ThemeBackground"; // <--- Import the new background component
 
 // 1. Configure the UI Font
 const geistSans = Geist({
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  viewportFit: "cover", // <--- This extends the background into the notch
+  viewportFit: "cover", 
 };
 
 export default function RootLayout({
@@ -43,9 +44,16 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased`}
+        // Added fallback bg and text color here
+        className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased bg-[#0F172A] text-white`}
       >
-        {children}
+        {/* The dynamic background layer sits behind everything */}
+        <ThemeBackground />
+
+        {/* Main content sits above the background */}
+        <main className="relative z-10 min-h-screen">
+          {children}
+        </main>
       </body>
     </html>
   );

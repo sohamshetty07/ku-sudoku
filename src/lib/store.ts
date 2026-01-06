@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// The shape of a saved game
 export interface GameState {
   initialBoard: number[][];
   boardState: number[][];
@@ -12,10 +11,8 @@ export interface GameState {
   timeElapsed: number;
   difficulty: 'Relaxed' | 'Standard' | 'Mastery';
   cellTimes: Record<string, number>; 
-  
-  // --- NEW FIELDS ---
-  isGameOver?: boolean; // Tracks if the game ended in loss
-  isWon?: boolean;      // Tracks if the game ended in victory
+  isGameOver?: boolean;
+  isWon?: boolean;
 }
 
 interface UserStore {
@@ -25,6 +22,10 @@ interface UserStore {
   activeGame: GameState | null;
   saveGame: (game: GameState) => void;
   clearGame: () => void;
+
+  // --- NEW: Theme State ---
+  themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery';
+  setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery') => void;
 }
 
 export const useStore = create<UserStore>()(
@@ -36,9 +37,13 @@ export const useStore = create<UserStore>()(
       activeGame: null,
       saveGame: (game) => set({ activeGame: game }),
       clearGame: () => set({ activeGame: null }),
+
+      // --- NEW: Default to Standard ---
+      themeDifficulty: 'Standard',
+      setThemeDifficulty: (diff) => set({ themeDifficulty: diff }),
     }),
     {
-      name: 'ku-storage', // Saves to localStorage
+      name: 'ku-storage',
     }
   )
 );

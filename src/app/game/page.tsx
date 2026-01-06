@@ -9,7 +9,6 @@ import NumberPad from "@/components/game/NumberPad";
 import GameOverModal from "@/components/game/GameOverModal";
 import VictoryModal from "@/components/game/VictoryModal";
 import Button from "@/components/ui/Button";
-// Removed Trophy import as it is no longer needed
 
 // --- CONFIGURATION RULES ---
 const GAME_CONFIG = {
@@ -31,7 +30,7 @@ function GameContent() {
   const config = GAME_CONFIG[mode];
 
   // --- STORE ---
-  const { updateElo, saveGame, clearGame } = useStore();
+  const { updateElo, saveGame, clearGame, setThemeDifficulty } = useStore();
 
   // --- STATE ---
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null);
@@ -80,18 +79,12 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // --- VISUALS: DYNAMIC BACKGROUND ---
-  const backgroundClass = useMemo(() => {
-    switch (mode) {
-      case 'Relaxed':
-        return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-teal-900/40 via-midnight to-midnight";
-      case 'Mastery':
-        return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-purple-900/40 via-midnight to-black";
-      case 'Standard':
-      default:
-        return "bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/40 via-midnight to-midnight";
+  // --- VISUALS: SYNC BACKGROUND ---
+  useEffect(() => {
+    if (mode) {
+      setThemeDifficulty(mode as 'Relaxed' | 'Standard' | 'Mastery');
     }
-  }, [mode]);
+  }, [mode, setThemeDifficulty]);
 
   // --- INIT & RESUME LOGIC ---
   const startNewGame = useCallback(() => {
@@ -118,8 +111,6 @@ function GameContent() {
       setFinalScore(0);
     } else {
       // START FRESH
-      
-      // ABANDONMENT PENALTY
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
         const penalty = savedGame.mistakes * 5;
         storeState.updateElo(-penalty);
@@ -333,7 +324,9 @@ function GameContent() {
   if (!boardState || !initialBoard) return <div className="text-white text-center mt-20">Entering the Void...</div>;
 
   return (
-    <main className={`relative flex min-h-screen flex-col items-center justify-center p-4 pb-8 transition-colors duration-1000 ${backgroundClass}`}>
+    // UPDATED: Changed padding from 'p-4' to 'px-1 py-4 md:p-4' 
+    // This allows the grid to extend to the edges on mobile.
+    <main className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8">
       
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
       
@@ -348,12 +341,10 @@ function GameContent() {
         />
       )}
 
-      {/* TOP BAR */}
-      <div className="flex w-full max-w-md items-center justify-between mb-6 px-1">
+      {/* TOP BAR - UPDATED: max-w-md -> max-w-lg to match grid size */}
+      <div className="flex w-full max-w-lg items-center justify-between mb-6 px-1">
         <button onClick={handleExit} className="text-white/50 hover:text-white transition">← Exit</button>
         
-        {/* Removed Live Elo Display Here - Clean Look */}
-
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm">{mode}</div>
           <div className="font-mono text-sm text-white/80 w-12 text-center">{formatTime(timeElapsed)}</div>
@@ -369,7 +360,9 @@ function GameContent() {
       </div>
 
       {/* GRID */}
+      {/* Added w-full to wrapper to ensure grid can expand */}
       <div className={`
+        w-full
         transition-all duration-1000 
         ${!isGameActive && !isWon ? "opacity-30 pointer-events-none filter blur-sm" : ""}
         ${isWon ? "scale-105" : ""}
@@ -384,8 +377,8 @@ function GameContent() {
         />
       </div>
 
-      {/* INPUTS */}
-      <div className={`w-full max-w-md flex flex-col gap-6 transition-all duration-500 ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}`}>
+      {/* INPUTS - UPDATED: max-w-md -> max-w-lg to match grid size */}
+      <div className={`w-full max-w-lg flex flex-col gap-6 mt-6 transition-all duration-500 ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}`}>
         <NumberPad 
           onNumberClick={handleInput} 
           onDelete={handleDelete} 

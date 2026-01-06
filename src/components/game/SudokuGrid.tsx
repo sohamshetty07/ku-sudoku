@@ -27,7 +27,10 @@ export default function SudokuGrid({
       : null;
 
   return (
-    <div className="grid grid-cols-9 bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
+    // UPDATED CONTAINER: 
+    // Added 'w-full max-w-lg' to ensure it takes full width of the phone screen 
+    // but stops expanding at a reasonable size (lg) on desktop.
+    <div className="grid grid-cols-9 w-full max-w-lg bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
           
@@ -58,8 +61,14 @@ export default function SudokuGrid({
               onClick={() => onCellClick(rowIndex, colIndex)}
               className={`
                 relative flex items-center justify-center 
-                w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 
-                text-lg sm:text-xl md:text-2xl font-mono cursor-pointer transition-colors duration-75
+                
+                // UPDATED SIZING:
+                // Removed fixed 'w-8 h-8' etc.
+                // Added 'w-full aspect-square' so it fills the grid column and stays square.
+                w-full aspect-square
+                
+                // UPDATED TEXT: Increased base text size for better readability on mobile
+                text-xl sm:text-2xl md:text-3xl font-mono cursor-pointer transition-colors duration-75
                 ${borderClasses}
                 
                 ${/* STATES */ ""}
@@ -73,7 +82,6 @@ export default function SudokuGrid({
                 ${!isSelected && !isRelated && !isSameValue ? "hover:bg-white/5" : ""}
                 
                 ${/* TYPOGRAPHY LOGIC */ ""}
-                ${/* If matching (Amber), override standard colors. Otherwise check Fixed vs User. */ ""}
                 ${isSameValue && !isSelected ? "text-amber-400" : (isFixed ? "font-bold text-white/90" : "font-semibold text-neon-cyan")}
               `}
             >
