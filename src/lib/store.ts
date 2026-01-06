@@ -11,7 +11,11 @@ export interface GameState {
   mistakes: number;
   timeElapsed: number;
   difficulty: 'Relaxed' | 'Standard' | 'Mastery';
-  cellTimes: Record<string, number>; // <--- NEW: Tracks seconds spent per cell
+  cellTimes: Record<string, number>; 
+  
+  // --- NEW FIELDS ---
+  isGameOver?: boolean; // Tracks if the game ended in loss
+  isWon?: boolean;      // Tracks if the game ended in victory
 }
 
 interface UserStore {

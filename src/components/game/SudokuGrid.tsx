@@ -27,8 +27,6 @@ export default function SudokuGrid({
       : null;
 
   return (
-    // Container: Removed 'aspect-square' and 'w-full' reliability. 
-    // We let the fixed-size cells define the total size, wrapped in a fit-content border.
     <div className="grid grid-cols-9 bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
@@ -46,8 +44,6 @@ export default function SudokuGrid({
           // --- BORDER LOGIC ---
           const isRightEdge = colIndex === 8;
           const isBottomEdge = rowIndex === 8;
-          
-          // Thicker borders for 3x3 sections
           const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
           const isThickBottom = (rowIndex + 1) % 3 === 0 && !isBottomEdge;
 
@@ -60,7 +56,6 @@ export default function SudokuGrid({
             <div
               key={`${rowIndex}-${colIndex}`}
               onClick={() => onCellClick(rowIndex, colIndex)}
-              // RESTORED: Fixed width/height classes to prevent collapse
               className={`
                 relative flex items-center justify-center 
                 w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 
@@ -69,13 +64,17 @@ export default function SudokuGrid({
                 
                 ${/* STATES */ ""}
                 ${isSelected ? "bg-neon-cyan/20 z-10" : ""}
-                ${!isSelected && isSameValue ? "bg-neon-cyan/10 text-neon-cyan font-bold" : ""}
+                
+                ${/* NEW: AMBER HIGHLIGHT for Matching Numbers */ ""}
+                ${!isSelected && isSameValue ? "bg-amber-500/20 text-amber-400 font-bold shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
+                
                 ${isError && !isSelected ? "bg-neon-red/10 text-neon-red" : ""}
                 ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
                 ${!isSelected && !isRelated && !isSameValue ? "hover:bg-white/5" : ""}
                 
-                ${/* TYPOGRAPHY */ ""}
-                ${isFixed ? "font-bold text-white/90" : "font-semibold text-neon-cyan"}
+                ${/* TYPOGRAPHY LOGIC */ ""}
+                ${/* If matching (Amber), override standard colors. Otherwise check Fixed vs User. */ ""}
+                ${isSameValue && !isSelected ? "text-amber-400" : (isFixed ? "font-bold text-white/90" : "font-semibold text-neon-cyan")}
               `}
             >
               {isSelected && (
