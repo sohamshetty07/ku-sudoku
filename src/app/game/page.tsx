@@ -14,7 +14,7 @@ import Button from "@/components/ui/Button";
 const GAME_CONFIG = {
   Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 10, parTime: 600 },
   Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 },
-  Mastery:  { holes: 55, lives: 1, eloReward: 30, eloPenalty: 10, baseScore: 60, parTime: 900 },
+  Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 60, parTime: 1500 },
 };
 
 const formatTime = (seconds: number) => {
@@ -78,6 +78,23 @@ function GameContent() {
     });
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
+
+  // --- VISUALS: DYNAMIC BACKGROUND (INLINE STYLE) ---
+  // We use inline styles to guarantee the gradient renders without Tailwind conflicts
+  const backgroundStyle = useMemo(() => {
+    switch (mode) {
+      case 'Relaxed':
+        // Teal/Green Glow -> Midnight
+        return { background: "radial-gradient(circle at center, rgba(20, 184, 166, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
+      case 'Mastery':
+        // Rose/Red Glow -> Black
+        return { background: "radial-gradient(circle at center, rgba(225, 29, 72, 0.4) 0%, #0F172A 70%, #000000 100%)" };
+      case 'Standard':
+      default:
+        // Blue Glow -> Midnight
+        return { background: "radial-gradient(circle at center, rgba(37, 99, 235, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
+    }
+  }, [mode]);
 
   // --- VISUALS: SYNC BACKGROUND ---
   useEffect(() => {
@@ -326,7 +343,10 @@ function GameContent() {
   return (
     // UPDATED: Changed padding from 'p-4' to 'px-1 py-4 md:p-4' 
     // This allows the grid to extend to the edges on mobile.
-    <main className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8">
+    <main 
+      className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
+      style={backgroundStyle} // <--- Forces the gradient to apply
+    >
       
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
       

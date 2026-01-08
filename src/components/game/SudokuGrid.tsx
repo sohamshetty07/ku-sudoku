@@ -27,9 +27,7 @@ export default function SudokuGrid({
       : null;
 
   return (
-    // UPDATED CONTAINER: 
-    // Added 'w-full max-w-lg' to ensure it takes full width of the phone screen 
-    // but stops expanding at a reasonable size (lg) on desktop.
+    // Container: Uses max-w-lg to constrain width on desktop, w-full for mobile
     <div className="grid grid-cols-9 w-full max-w-lg bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
@@ -55,34 +53,42 @@ export default function SudokuGrid({
             ${!isBottomEdge ? (isThickBottom ? "border-b-2 border-b-white/30" : "border-b border-b-white/10") : ""}
           `;
 
+          // --- TEXT COLOR PRIORITY LOGIC ---
+          // 1. Error: ALWAYS Red (Even if selected)
+          // 2. Matching Value: Amber (Unless selected)
+          // 3. Fixed: White
+          // 4. Default User Input: Cyan
+          let textColorClass = "";
+          
+          if (isError) {
+            textColorClass = "text-neon-red font-bold";
+          } else if (isSameValue && !isSelected) {
+            textColorClass = "text-amber-400 font-bold";
+          } else if (isFixed) {
+            textColorClass = "text-white/90 font-bold";
+          } else {
+            textColorClass = "text-neon-cyan font-semibold";
+          }
+
           return (
             <div
               key={`${rowIndex}-${colIndex}`}
               onClick={() => onCellClick(rowIndex, colIndex)}
               className={`
                 relative flex items-center justify-center 
-                
-                // UPDATED SIZING:
-                // Removed fixed 'w-8 h-8' etc.
-                // Added 'w-full aspect-square' so it fills the grid column and stays square.
                 w-full aspect-square
-                
-                // UPDATED TEXT: Increased base text size for better readability on mobile
                 text-xl sm:text-2xl md:text-3xl font-mono cursor-pointer transition-colors duration-75
                 ${borderClasses}
                 
-                ${/* STATES */ ""}
+                ${/* BACKGROUND STATES */ ""}
                 ${isSelected ? "bg-neon-cyan/20 z-10" : ""}
-                
-                ${/* NEW: AMBER HIGHLIGHT for Matching Numbers */ ""}
-                ${!isSelected && isSameValue ? "bg-amber-500/20 text-amber-400 font-bold shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
-                
-                ${isError && !isSelected ? "bg-neon-red/10 text-neon-red" : ""}
+                ${!isSelected && isSameValue ? "bg-amber-500/20 shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
+                ${isError && !isSelected ? "bg-neon-red/10" : ""}
                 ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
                 ${!isSelected && !isRelated && !isSameValue ? "hover:bg-white/5" : ""}
                 
-                ${/* TYPOGRAPHY LOGIC */ ""}
-                ${isSameValue && !isSelected ? "text-amber-400" : (isFixed ? "font-bold text-white/90" : "font-semibold text-neon-cyan")}
+                ${/* TEXT COLOR APPLIED HERE */ ""}
+                ${textColorClass}
               `}
             >
               {isSelected && (
