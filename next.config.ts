@@ -3,28 +3,32 @@ import withPWA from "@ducanh2912/next-pwa";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // This helps prevent hydration mismatches which can sometimes look like SW errors
+  compiler: {
+    removeConsole: process.env.NODE_ENV === "production",
+  },
 };
 
 export default withPWA({
   dest: "public",
-  cacheOnFrontEndNav: true,
-  aggressiveFrontEndNavCaching: true,
+  // DISABLE THESE for now. They are aggressive and can cause the "no-response" error
+  // if the cache isn't perfectly primed.
+  cacheOnFrontEndNav: false,
+  aggressiveFrontEndNavCaching: false,
+  
   reloadOnOnline: true,
   disable: process.env.NODE_ENV === "development",
   
-  // This forces the Service Worker to take control immediately
-  // preventing the "need to refresh twice" issue.
   workboxOptions: {
     disableDevLogs: true,
-    skipWaiting: true,
-    clientsClaim: true,
     
+    // EXTENDED RULESET
     runtimeCaching: [
       {
-        // RULE 1: STATIC ASSETS (JS, CSS, Images)
+        // RULE 1: JS, CSS, IMAGES (The "App Shell" Assets)
         // Strategy: CacheFirst
-        // These files have hashes in their names (e.g., app-a1b2.js), so they never change.
-        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
+        // These file names have hashes (e.g. main-x82z.js), so they never change.
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?|json)$/i,
         handler: "CacheFirst",
         options: {
           cacheName: "static-assets",
@@ -35,51 +39,58 @@ export default withPWA({
         },
       },
       {
-        // RULE 2: APP PAGES & DATA
-        // Strategy: StaleWhileRevalidate
-        // Meaning: "Serve the cached version INSTANTLY, then update it in the background."
+        // RULE 2: PAGES (HTML) - Dashboard, Game, Home
+        // Strategy: NetworkFirst (The "Safe" Offline Mode)
+        // Try to fetch from internet. If offline, use the cached version.
         urlPattern: ({ url }) => {
           return (
             url.pathname === "/" ||
             url.pathname.startsWith("/game") || 
-            url.pathname.startsWith("/dashboard") ||
-            url.pathname.startsWith("/_next/data/") 
+            url.pathname.startsWith("/dashboard")
           );
         },
-        handler: "StaleWhileRevalidate",
+        handler: "NetworkFirst",
         options: {
           cacheName: "pages-cache",
           expiration: {
             maxEntries: 50,
             maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
           },
-          // CRITICAL: Tells the cache that "/game?mode=Relaxed" 
-          // is the same app page as "/game".
-          matchOptions: {
-            ignoreSearch: true,
+          networkTimeoutSeconds: 5, // Wait 5s for internet, then use cache
+        },
+      },
+      {
+        // RULE 3: NEXT.JS DATA (JSON data for page transitions)
+        // Strategy: NetworkFirst
+        urlPattern: /\/_next\/data\/.+\/.+\.json$/i,
+        handler: "NetworkFirst",
+        options: {
+          cacheName: "next-data",
+          expiration: {
+            maxEntries: 50,
+            maxAgeSeconds: 60 * 60 * 24, // 24 Hours
           },
         },
       },
       {
-        // RULE 3: API CALLS (If you have any)
+        // RULE 4: API CALLS
         urlPattern: /\/api\/.*/i,
         handler: "NetworkFirst",
         options: {
           cacheName: "apis",
           expiration: {
-            maxEntries: 16,
-            maxAgeSeconds: 60 * 60 * 24, // 24 hours
+            maxEntries: 32,
+            maxAgeSeconds: 60 * 60 * 24,
           },
         },
       },
       {
-        // RULE 4: CATCH-ALL
-        urlPattern: /^https?.*/,
+        // RULE 5: EVERYTHING ELSE
+        urlPattern: ({ url }) => !url.pathname.startsWith('/api'), 
         handler: "NetworkFirst",
         options: {
           cacheName: "others",
           expiration: { maxEntries: 200 },
-          networkTimeoutSeconds: 3,
         },
       },
     ],
