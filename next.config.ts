@@ -14,50 +14,56 @@ export default withPWA({
   
   workboxOptions: {
     disableDevLogs: true,
-    // EXTENDED CACHING RULES
     runtimeCaching: [
+      // RULE 1: IMAGES, FONTS, SCRIPTS, STYLES (Static Assets)
+      // Strategy: CacheFirst
+      // Why: These files have hash names (e.g., main-123.js). They never change.
+      // If we have it, use it. This prevents the "flicker" or reloading issues.
       {
-        // RULE 1: CRITICAL PAGES (Dashboard, Game, Home)
-        // Strategy: StaleWhileRevalidate
-        // Meaning: "Serve from cache IMMEDIATELY. Don't wait for the internet."
+        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "static-assets",
+          expiration: { 
+            maxEntries: 200,
+            maxAgeSeconds: 60 * 60 * 24 * 365, // 1 Year
+          },
+        },
+      },
+      // RULE 2: PAGES & DATA (The Game Logic)
+      // Strategy: NetworkFirst
+      // Why: Try to get the latest version. If Offline, use the cached version.
+      // This fixes the "refresh loop" because it prioritizes consistency.
+      {
         urlPattern: ({ url }) => {
           return (
             url.pathname === "/" ||
             url.pathname.startsWith("/game") || 
             url.pathname.startsWith("/dashboard") ||
-            url.pathname.startsWith("/_next/data/") // Essential for Next.js transitions
+            url.pathname.startsWith("/_next/data/") // Critical for avoiding blank screens
           );
         },
-        handler: "StaleWhileRevalidate", 
+        handler: "NetworkFirst",
         options: {
           cacheName: "pages-cache",
           expiration: {
             maxEntries: 50,
             maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
           },
-          // CRITICAL: Treat /game?mode=Relaxed the same as /game
+          // CRITICAL FIX: This prevents crashes on /game?mode=Relaxed
           matchOptions: {
             ignoreSearch: true,
           },
+          networkTimeoutSeconds: 3, // Fallback to cache fast if internet is slow
         },
       },
+      // RULE 3: CATCH-ALL
       {
-        // RULE 2: STATIC ASSETS (Images, Fonts, CSS, JS)
-        urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
-        handler: "StaleWhileRevalidate",
-        options: {
-          cacheName: "static-assets",
-          expiration: { maxEntries: 200 },
-        },
-      },
-      {
-        // RULE 3: CATCH-ALL (Everything else)
         urlPattern: /^https?.*/,
         handler: "NetworkFirst",
         options: {
           cacheName: "others",
           expiration: { maxEntries: 200 },
-          networkTimeoutSeconds: 3, // Wait 3s for internet, then fail to cache
         },
       },
     ],
