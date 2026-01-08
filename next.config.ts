@@ -16,29 +16,26 @@ export default withPWA({
     disableDevLogs: true,
     runtimeCaching: [
       {
-        // RULE 1: Main App Pages (Home, Game, Dashboard)
-        // FIX: Now includes checking for /dashboard and root /
-        urlPattern: ({ url }) => 
-          url.pathname === "/" || 
-          url.pathname.startsWith("/_next/data/") ||
-          url.pathname.startsWith("/game") || 
-          url.pathname.startsWith("/dashboard"),
-          
-        handler: "NetworkFirst", // Try internet -> Fallback to Cache
+        // RULE 1: CACHE ALL PAGES & DATA
+        // If the browser requests a Page (HTML) or Next.js Data (JSON), cache it.
+        // This covers /, /game, /dashboard, and any future pages automatically.
+        urlPattern: ({ request, url }) => {
+          return request.mode === "navigate" || url.pathname.startsWith("/_next/data/");
+        },
+        handler: "NetworkFirst", // Try internet first -> Fallback to Cache
         options: {
-          cacheName: "app-pages",
+          cacheName: "pages-cache",
           expiration: {
-            maxEntries: 50,
+            maxEntries: 100,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
           },
-          // Allows /game?mode=Relaxed to match /game in cache
           matchOptions: {
-            ignoreSearch: true,
+            ignoreSearch: true, // Fixes the ?mode=Relaxed crash
           },
         },
       },
       {
-        // RULE 2: Static Assets (Images, Fonts, JS, CSS)
+        // RULE 2: STATIC ASSETS (Images, Styles, Scripts)
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
         handler: "StaleWhileRevalidate",
         options: {
@@ -47,7 +44,7 @@ export default withPWA({
         },
       },
       {
-        // RULE 3: Everything else
+        // RULE 3: CATCH-ALL (Safety Net)
         urlPattern: /^https?.*/,
         handler: "NetworkFirst",
         options: {
