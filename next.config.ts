@@ -14,28 +14,35 @@ export default withPWA({
   
   workboxOptions: {
     disableDevLogs: true,
+    // EXTENDED CACHING RULES
     runtimeCaching: [
       {
-        // RULE 1: CACHE ALL PAGES & DATA
-        // If the browser requests a Page (HTML) or Next.js Data (JSON), cache it.
-        // This covers /, /game, /dashboard, and any future pages automatically.
-        urlPattern: ({ request, url }) => {
-          return request.mode === "navigate" || url.pathname.startsWith("/_next/data/");
+        // RULE 1: CRITICAL PAGES (Dashboard, Game, Home)
+        // Strategy: StaleWhileRevalidate
+        // Meaning: "Serve from cache IMMEDIATELY. Don't wait for the internet."
+        urlPattern: ({ url }) => {
+          return (
+            url.pathname === "/" ||
+            url.pathname.startsWith("/game") || 
+            url.pathname.startsWith("/dashboard") ||
+            url.pathname.startsWith("/_next/data/") // Essential for Next.js transitions
+          );
         },
-        handler: "NetworkFirst", // Try internet first -> Fallback to Cache
+        handler: "StaleWhileRevalidate", 
         options: {
           cacheName: "pages-cache",
           expiration: {
-            maxEntries: 100,
-            maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
+            maxEntries: 50,
+            maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
           },
+          // CRITICAL: Treat /game?mode=Relaxed the same as /game
           matchOptions: {
-            ignoreSearch: true, // Fixes the ?mode=Relaxed crash
+            ignoreSearch: true,
           },
         },
       },
       {
-        // RULE 2: STATIC ASSETS (Images, Styles, Scripts)
+        // RULE 2: STATIC ASSETS (Images, Fonts, CSS, JS)
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
         handler: "StaleWhileRevalidate",
         options: {
@@ -44,12 +51,13 @@ export default withPWA({
         },
       },
       {
-        // RULE 3: CATCH-ALL (Safety Net)
+        // RULE 3: CATCH-ALL (Everything else)
         urlPattern: /^https?.*/,
         handler: "NetworkFirst",
         options: {
           cacheName: "others",
           expiration: { maxEntries: 200 },
+          networkTimeoutSeconds: 3, // Wait 3s for internet, then fail to cache
         },
       },
     ],
