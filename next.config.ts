@@ -20,6 +20,7 @@ export default withPWA({
         // FIX: Now includes checking for /dashboard and root /
         urlPattern: ({ url }) => 
           url.pathname === "/" || 
+          url.pathname.startsWith("/_next/data/") ||
           url.pathname.startsWith("/game") || 
           url.pathname.startsWith("/dashboard"),
           
