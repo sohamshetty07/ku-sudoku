@@ -1,79 +1,126 @@
-import { isValid, solveSudoku, type Grid } from "./solver";
+// src/lib/sudoku/generator.ts
 
-// Helper: Generates an empty 9x9 grid
-function getEmptyGrid(): Grid {
-  return Array.from({ length: 9 }, () => Array(9).fill(0));
-}
+export type Grid = number[][];
 
-// Helper: Shuffles an array (Fisher-Yates algorithm)
-// We need this to randomize which numbers we try, ensuring unique puzzles.
-function shuffle(array: number[]) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
+// --- UTILITY: Check if placing num at board[row][col] is valid ---
+function isValid(board: number[][], row: number, col: number, num: number): boolean {
+  for (let i = 0; i < 9; i++) {
+    // Check Row & Column
+    if (board[row][i] === num && i !== col) return false;
+    if (board[i][col] === num && i !== row) return false;
+    
+    // Check 3x3 Box
+    const boxRow = 3 * Math.floor(row / 3) + Math.floor(i / 3);
+    const boxCol = 3 * Math.floor(col / 3) + (i % 3);
+    if (board[boxRow][boxCol] === num && (boxRow !== row || boxCol !== col)) return false;
   }
-  return array;
+  return true;
 }
 
-/**
- * 1. THE SEED
- * Fills the diagonal 3x3 boxes first (independent of each other),
- * then solves the rest to create a valid complete board.
- */
-function generateFullBoard(): Grid {
-  const board = getEmptyGrid();
+// --- SOLVER: Count Number of Solutions (Capped at 2) ---
+// This is the "Uniqueness Checker".
+// Returns: 0 (impossible), 1 (unique), 2 (ambiguous/multiple)
+function countSolutions(board: number[][]): number {
+  let count = 0;
 
-  // Step A: Fill the 3 diagonal boxes (Top-Left, Center, Bottom-Right)
-  // Because they don't share rows/cols, we can fill them randomly without checks.
-  for (let i = 0; i < 9; i = i + 3) {
-    fillBox(board, i, i);
+  function solve(r: number, c: number): boolean {
+    // If we reached past the last row, we found a valid solution
+    if (r === 9) {
+      count++;
+      return count > 1; // Stop searching if we found more than 1 solution
+    }
+
+    const nextR = c === 8 ? r + 1 : r;
+    const nextC = c === 8 ? 0 : c + 1;
+
+    // Skip filled cells
+    if (board[r][c] !== 0) {
+      return solve(nextR, nextC);
+    }
+
+    // Try numbers 1-9
+    for (let num = 1; num <= 9; num++) {
+      if (isValid(board, r, c, num)) {
+        board[r][c] = num;
+        if (solve(nextR, nextC)) return true; // Early exit if >1 found
+        board[r][c] = 0; // Backtrack
+      }
+    }
+    return false;
   }
 
-  // Step B: Solve the rest of the board to make it valid
-  solveSudoku(board); // We use our existing solver!
-  
-  return board;
+  // Create a copy to solve so we don't mutate the checked board reference
+  const boardCopy = board.map(row => [...row]);
+  solve(0, 0);
+  return count;
 }
 
-// Fills a 3x3 box with random unique numbers 1-9
-function fillBox(board: Grid, startRow: number, startCol: number) {
-  let num = 0;
-  // Create array [1..9] and shuffle it
-  const nums = shuffle([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      board[startRow + i][startCol + j] = nums[num];
-      num++;
+// --- GENERATOR: Create a Full Valid Seed ---
+// Uses backtracking to fill an empty board completely
+function fillBoard(board: number[][]): boolean {
+  for (let row = 0; row < 9; row++) {
+    for (let col = 0; col < 9; col++) {
+      if (board[row][col] === 0) {
+        // Randomize order of numbers to ensure unique puzzles every time
+        const nums = [1, 2, 3, 4, 5, 6, 7, 8, 9].sort(() => Math.random() - 0.5);
+        
+        for (const num of nums) {
+          if (isValid(board, row, col, num)) {
+            board[row][col] = num;
+            if (fillBoard(board)) return true;
+            board[row][col] = 0;
+          }
+        }
+        return false;
+      }
     }
   }
+  return true;
 }
 
-/**
- * 2. THE CARVER
- * Removes 'k' numbers from the board to create the puzzle.
- * @param difficulty - How many numbers to remove (e.g., 40 for Easy)
- */
-export function generateSudoku(difficulty: number = 40): { initial: Grid; solved: Grid } {
-  // 1. Generate a complete, valid solution
-  const solved = generateFullBoard();
+// --- MAIN EXPORT ---
+export function generateSudoku(holes: number): { initial: Grid; solved: Grid } {
+  // 1. Create Empty Board
+  const initial = Array.from({ length: 9 }, () => Array(9).fill(0));
 
-  // 2. Clone it so we don't mess up the solution reference
-  // (In JS, arrays are passed by reference, so we need a deep copy)
-  const initial = solved.map((row) => [...row]);
+  // 2. Fill it completely (The "Solution")
+  fillBoard(initial);
+  
+  // Clone the solution to keep as our Answer Key
+  const solved = initial.map(row => [...row]);
 
-  // 3. Remove numbers
-  let attempts = difficulty;
-  while (attempts > 0) {
-    let row = Math.floor(Math.random() * 9);
-    let col = Math.floor(Math.random() * 9);
+  // 3. Remove numbers (Carve holes) WITH Uniqueness Check
+  let attempts = holes;
+  
+  // Generate list of all positions [0,0] to [8,8]
+  const positions = [];
+  for (let r = 0; r < 9; r++) {
+    for (let c = 0; c < 9; c++) {
+      positions.push({ r, c });
+    }
+  }
+  
+  // Shuffle positions to remove randomly
+  positions.sort(() => Math.random() - 0.5);
 
-    // If strictly adhering to PDD "Unique Solution" check, 
-    // we would run a solver here to ensure removing this doesn't create ambiguity.
-    // For this Phase 2.1 "Hello World" of logic, we will just remove it.
+  for (const pos of positions) {
+    if (attempts <= 0) break;
+
+    const { r, c } = pos;
+    const removedVal = initial[r][c];
     
-    if (initial[row][col] !== 0) {
-      initial[row][col] = 0; // 0 represents an empty cell
+    // Temporarily remove the number
+    initial[r][c] = 0;
+
+    // CHECK: Does this board still have exactly 1 solution?
+    // We clone 'initial' because countSolutions mutates its input during recursion
+    const solutionsCount = countSolutions(initial.map(row => [...row]));
+
+    if (solutionsCount !== 1) {
+      // If 0 solutions (error) or >1 (ambiguous), put the number back!
+      initial[r][c] = removedVal;
+    } else {
+      // Valid removal (still unique), count it as a hole
       attempts--;
     }
   }

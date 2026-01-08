@@ -27,10 +27,16 @@ export default function SudokuGrid({
       : null;
 
   return (
-    // UPDATED CONTAINER: 
-    // Added 'aspect-square' HERE. This guarantees the entire board is a perfect square.
-    // The grid tracks will divide this square evenly without sub-pixel gaps.
-    <div className="grid grid-cols-9 w-full max-w-lg aspect-square bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
+    // CONTAINER
+    // Safari Fixes Added:
+    // 1. 'isolate': Creates a new stacking context to fix border-radius clipping.
+    // 2. 'transform-gpu': Forces hardware acceleration for smoother rendering.
+    // 3. 'z-0': Ensures correct layering context.
+    // 4. Inline styles: Specific Webkit hacks for iOS Safari.
+    <div 
+      className="grid grid-cols-9 grid-rows-9 w-full max-w-lg aspect-square bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto isolate transform-gpu z-0"
+      style={{ WebkitBackfaceVisibility: "hidden", WebkitTransform: "translate3d(0, 0, 0)" }}
+    >
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
           
@@ -44,16 +50,18 @@ export default function SudokuGrid({
 
           const isSameValue = selectedValue !== null && cellValue === selectedValue && !isSelected;
 
-          // --- BORDER LOGIC ---
+          // --- BORDER LOGIC (STABILITY FIX) ---
           const isRightEdge = colIndex === 8;
           const isBottomEdge = rowIndex === 8;
           const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
           const isThickBottom = (rowIndex + 1) % 3 === 0 && !isBottomEdge;
 
-          // UPDATED BORDERS: Increased opacity (10->15%, 30->40%) for sharper lines on mobile screens
+          // FIX: ALL borders are now 1px wide ('border-r', 'border-b').
+          // We use Opacity (white/50 vs white/10) to create the visual hierarchy.
+          // This eliminates sub-pixel jitter on all browsers.
           const borderClasses = `
-            ${!isRightEdge ? (isThickRight ? "border-r-2 border-r-white/40" : "border-r border-r-white/15") : ""}
-            ${!isBottomEdge ? (isThickBottom ? "border-b-2 border-b-white/40" : "border-b border-b-white/15") : ""}
+            ${!isRightEdge ? (isThickRight ? "border-r border-r-white/50" : "border-r border-r-white/10") : ""}
+            ${!isBottomEdge ? (isThickBottom ? "border-b border-b-white/50" : "border-b border-b-white/10") : ""}
           `;
 
           // --- TEXT COLOR PRIORITY LOGIC ---
@@ -75,13 +83,9 @@ export default function SudokuGrid({
               onClick={() => onCellClick(rowIndex, colIndex)}
               className={`
                 relative flex items-center justify-center 
-                
-                // UPDATED SIZING:
-                // Removed 'aspect-square'.
-                // Added 'w-full h-full' to force cell to fill the grid track perfectly.
                 w-full h-full
-                
                 text-xl sm:text-2xl md:text-3xl font-mono cursor-pointer transition-colors duration-75
+                
                 ${borderClasses}
                 
                 ${/* BACKGROUND STATES */ ""}
