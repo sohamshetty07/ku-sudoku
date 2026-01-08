@@ -14,7 +14,7 @@ import Button from "@/components/ui/Button";
 const GAME_CONFIG = {
   Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 10, parTime: 600 },
   Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 },
-  Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 60, parTime: 1500 },
+  Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 120, parTime: 1500 },
 };
 
 const formatTime = (seconds: number) => {
@@ -26,8 +26,16 @@ const formatTime = (seconds: number) => {
 function GameContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const mode = (searchParams.get("mode") as keyof typeof GAME_CONFIG) || "Standard";
-  const config = GAME_CONFIG[mode];
+
+  // 1. Get the requested mode from URL (User Intent)
+  const searchMode = (searchParams.get("mode") as keyof typeof GAME_CONFIG) || "Standard";
+
+  // 2. Create state for the ACTUAL active mode. 
+  // This allows us to override the URL if the saved game has a different difficulty.
+  const [activeMode, setActiveMode] = useState(searchMode);
+  
+  // 3. Derive config from the STATE, not the URL
+  const config = GAME_CONFIG[activeMode];
 
   // --- STORE ---
   const { updateElo, saveGame, clearGame, setThemeDifficulty } = useStore();
@@ -80,28 +88,24 @@ function GameContent() {
   }, [boardState, solution]);
 
   // --- VISUALS: DYNAMIC BACKGROUND (INLINE STYLE) ---
-  // We use inline styles to guarantee the gradient renders without Tailwind conflicts
   const backgroundStyle = useMemo(() => {
-    switch (mode) {
+    switch (activeMode) { // UPDATED: Listen to activeMode
       case 'Relaxed':
-        // Teal/Green Glow -> Midnight
         return { background: "radial-gradient(circle at center, rgba(20, 184, 166, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
       case 'Mastery':
-        // Rose/Red Glow -> Black
         return { background: "radial-gradient(circle at center, rgba(225, 29, 72, 0.4) 0%, #0F172A 70%, #000000 100%)" };
       case 'Standard':
       default:
-        // Blue Glow -> Midnight
         return { background: "radial-gradient(circle at center, rgba(37, 99, 235, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
     }
-  }, [mode]);
+  }, [activeMode]);
 
   // --- VISUALS: SYNC BACKGROUND ---
   useEffect(() => {
-    if (mode) {
-      setThemeDifficulty(mode as 'Relaxed' | 'Standard' | 'Mastery');
+    if (activeMode) {
+      setThemeDifficulty(activeMode as 'Relaxed' | 'Standard' | 'Mastery');
     }
-  }, [mode, setThemeDifficulty]);
+  }, [activeMode, setThemeDifficulty]);
 
   // --- INIT & RESUME LOGIC ---
   const startNewGame = useCallback(() => {
@@ -112,6 +116,8 @@ function GameContent() {
 
     if (shouldResume && savedGame) {
       // RESUME
+      setActiveMode(savedGame.difficulty); // <--- FIX: Restore difficulty from save
+      
       setInitialBoard(savedGame.initialBoard);
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
@@ -128,13 +134,18 @@ function GameContent() {
       setFinalScore(0);
     } else {
       // START FRESH
+      // Ensure we use the URL mode if we are starting a new game
+      setActiveMode(searchMode); 
+      
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
         const penalty = savedGame.mistakes * 5;
         storeState.updateElo(-penalty);
         console.log(`Abandoned game penalty applied: -${penalty}`);
       }
 
-      const { initial, solved } = generateSudoku(config.holes);
+      // Generate based on the requested Search Mode to ensure correct holes
+      const { initial, solved } = generateSudoku(GAME_CONFIG[searchMode].holes);
+      
       setInitialBoard(initial);
       setSolution(solved);
       setBoardState(initial.map(row => [...row]));
@@ -151,7 +162,7 @@ function GameContent() {
       
       clearGame();
     }
-  }, [config.holes, searchParams, clearGame]);
+  }, [searchParams, clearGame, searchMode]);
 
   useEffect(() => {
     startNewGame();
@@ -168,14 +179,14 @@ function GameContent() {
         history,
         mistakes,
         timeElapsed,
-        difficulty: mode as 'Relaxed' | 'Standard' | 'Mastery',
+        difficulty: activeMode as 'Relaxed' | 'Standard' | 'Mastery', // UPDATED: Save activeMode
         cellTimes,
         isGameOver, 
         isWon
       };
       saveGame(currentGameState);
     }
-  }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, mode, saveGame, cellTimes, isGameOver, isWon]);
+  }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, activeMode, saveGame, cellTimes, isGameOver, isWon]);
 
   // --- CLEANUP ON GAME OVER ---
   useEffect(() => {
@@ -225,11 +236,27 @@ function GameContent() {
   const handleUndo = useCallback(() => {
     if (!isGameActive || history.length === 0) return;
     const prev = history[history.length - 1];
+    
+    // 1. Restore the board
     setBoardState(prev.board);
     setNotes(prev.notes);
     setHistory(p => p.slice(0, -1));
-    setErrorCells(new Set());
-  }, [isGameActive, history]);
+
+    // 2. BUG FIX: Recalculate errors for the restored board
+    // We compare every number on the restored board against the solution.
+    if (solution) {
+      const newErrors = new Set<string>();
+      prev.board.forEach((row, r) => {
+        row.forEach((val, c) => {
+          // If a cell has a value, and it doesn't match the solution -> It's an error
+          if (val !== 0 && val !== solution[r][c]) {
+            newErrors.add(`${r}-${c}`);
+          }
+        });
+      });
+      setErrorCells(newErrors);
+    }
+  }, [isGameActive, history, solution]);
 
   const checkVictory = useCallback((currentBoard: number[][], solved: number[][]) => {
     for (let i = 0; i < 9; i++) {
@@ -341,11 +368,9 @@ function GameContent() {
   if (!boardState || !initialBoard) return <div className="text-white text-center mt-20">Entering the Void...</div>;
 
   return (
-    // UPDATED: Changed padding from 'p-4' to 'px-1 py-4 md:p-4' 
-    // This allows the grid to extend to the edges on mobile.
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
-      style={backgroundStyle} // <--- Forces the gradient to apply
+      style={backgroundStyle}
     >
       
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
@@ -361,12 +386,12 @@ function GameContent() {
         />
       )}
 
-      {/* TOP BAR - UPDATED: max-w-md -> max-w-lg to match grid size */}
+      {/* TOP BAR */}
       <div className="flex w-full max-w-lg items-center justify-between mb-6 px-1">
         <button onClick={handleExit} className="text-white/50 hover:text-white transition">← Exit</button>
         
         <div className="flex items-center gap-4">
-          <div className="text-white/50 font-sans text-sm">{mode}</div>
+          <div className="text-white/50 font-sans text-sm">{activeMode}</div>
           <div className="font-mono text-sm text-white/80 w-12 text-center">{formatTime(timeElapsed)}</div>
           
           {config.lives === Infinity ? (
@@ -380,7 +405,6 @@ function GameContent() {
       </div>
 
       {/* GRID */}
-      {/* Added w-full to wrapper to ensure grid can expand */}
       <div className={`
         w-full
         transition-all duration-1000 
@@ -398,7 +422,6 @@ function GameContent() {
       </div>
 
       {/* INPUTS */}
-      {/* FIX: Added 'items-center' and 'mx-auto' to force centering on large screens */}
       <div className={`
         w-full max-w-lg flex flex-col gap-6 mt-6 mx-auto items-center 
         transition-all duration-500 
