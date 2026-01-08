@@ -17,6 +17,9 @@ const GAME_CONFIG = {
   Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 120, parTime: 900 },
 };
 
+// Helper type for valid modes
+type GameMode = keyof typeof GAME_CONFIG;
+
 const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
@@ -26,19 +29,21 @@ const formatTime = (seconds: number) => {
 function GameContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-
-  // 1. Get the requested mode from URL (User Intent)
-  const searchMode = (searchParams.get("mode") as keyof typeof GAME_CONFIG) || "Standard";
-
-  // 2. Create state for the ACTUAL active mode. 
-  // This allows us to override the URL if the saved game has a different difficulty.
-  const [activeMode, setActiveMode] = useState(searchMode);
   
-  // 3. Derive config from the STATE, not the URL
-  const config = GAME_CONFIG[activeMode];
-
   // --- STORE ---
   const { updateElo, saveGame, clearGame, setThemeDifficulty } = useStore();
+
+  // 1. Get the requested mode from URL (Safe Fallback to Standard)
+  const rawMode = searchParams.get("mode");
+  const searchMode: GameMode = (rawMode && rawMode in GAME_CONFIG) 
+    ? (rawMode as GameMode) 
+    : "Standard";
+
+  // 2. Create state for the ACTUAL active mode. 
+  const [activeMode, setActiveMode] = useState<GameMode>(searchMode);
+  
+  // 3. Derive config from the STATE
+  const config = GAME_CONFIG[activeMode];
 
   // --- STATE ---
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null);
@@ -53,12 +58,9 @@ function GameContent() {
   const [notes, setNotes] = useState<Record<string, number[]>>({});
   const [history, setHistory] = useState<{ board: number[][]; notes: Record<string, number[]> }[]>([]);
 
-  // HEATMAP STATE
   const [cellTimes, setCellTimes] = useState<Record<string, number>>({}); 
-
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isWon, setIsWon] = useState<boolean>(false);
-  
   const [finalScore, setFinalScore] = useState<number>(0);
 
   const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
@@ -87,9 +89,9 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // --- VISUALS: DYNAMIC BACKGROUND (INLINE STYLE) ---
+  // --- VISUALS: DYNAMIC BACKGROUND ---
   const backgroundStyle = useMemo(() => {
-    switch (activeMode) { // UPDATED: Listen to activeMode
+    switch (activeMode) {
       case 'Relaxed':
         return { background: "radial-gradient(circle at center, rgba(20, 184, 166, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
       case 'Mastery':
@@ -100,24 +102,22 @@ function GameContent() {
     }
   }, [activeMode]);
 
-  // --- VISUALS: SYNC BACKGROUND ---
+  // --- VISUALS: SYNC THEME ---
   useEffect(() => {
-    if (activeMode) {
-      setThemeDifficulty(activeMode as 'Relaxed' | 'Standard' | 'Mastery');
-    }
+    setThemeDifficulty(activeMode);
   }, [activeMode, setThemeDifficulty]);
 
-  // --- INIT & RESUME LOGIC ---
+  // --- CORE: INIT & RESUME LOGIC (OFFLINE SAFE) ---
+  // This runs on the client, ensuring the generator logic is executed locally.
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
-    
     const storeState = useStore.getState();
     const savedGame = storeState.activeGame;
 
     if (shouldResume && savedGame) {
-      // RESUME
-      setActiveMode(savedGame.difficulty); // <--- FIX: Restore difficulty from save
-      
+      // --- PATH A: RESUME GAME ---
+      console.log("Resuming saved game...");
+      setActiveMode(savedGame.difficulty);
       setInitialBoard(savedGame.initialBoard);
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
@@ -133,17 +133,17 @@ function GameContent() {
       setIsWon(false);
       setFinalScore(0);
     } else {
-      // START FRESH
-      // Ensure we use the URL mode if we are starting a new game
+      // --- PATH B: GENERATE NEW GAME (Client Side) ---
+      console.log("Generating new game client-side...");
       setActiveMode(searchMode); 
       
+      // Apply penalty if abandoning a valid previous game
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
         const penalty = savedGame.mistakes * 5;
         storeState.updateElo(-penalty);
-        console.log(`Abandoned game penalty applied: -${penalty}`);
       }
 
-      // Generate based on the requested Search Mode to ensure correct holes
+      // VITAL: Generate the puzzle here, on the device.
       const { initial, solved } = generateSudoku(GAME_CONFIG[searchMode].holes);
       
       setInitialBoard(initial);
@@ -164,6 +164,7 @@ function GameContent() {
     }
   }, [searchParams, clearGame, searchMode]);
 
+  // Trigger game start on mount (or if params change)
   useEffect(() => {
     startNewGame();
   }, [startNewGame]);
@@ -179,7 +180,7 @@ function GameContent() {
         history,
         mistakes,
         timeElapsed,
-        difficulty: activeMode as 'Relaxed' | 'Standard' | 'Mastery', // UPDATED: Save activeMode
+        difficulty: activeMode,
         cellTimes,
         isGameOver, 
         isWon
@@ -198,7 +199,7 @@ function GameContent() {
     }
   }, [isGameOver, clearGame, config.eloPenalty, updateElo]);
 
-  // --- TIMER (Global) ---
+  // --- TIMER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && boardState) {
@@ -207,7 +208,7 @@ function GameContent() {
     return () => clearInterval(interval);
   }, [isGameActive, boardState]);
 
-  // --- HEATMAP TRACKER (Per Cell) ---
+  // --- HEATMAP TRACKER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && selectedCell) {
@@ -222,12 +223,12 @@ function GameContent() {
     return () => clearInterval(interval);
   }, [isGameActive, selectedCell]);
 
-  // --- HANDLER: Exit Game ---
+  // --- HANDLER: Exit ---
   const handleExit = () => {
     router.push('/');
   };
 
-  // --- HISTORY ---
+  // --- HISTORY / UNDO ---
   const saveToHistory = useCallback(() => {
     if (!boardState) return;
     setHistory(p => [...p, { board: boardState.map(r => [...r]), notes: { ...notes } }]);
@@ -237,18 +238,14 @@ function GameContent() {
     if (!isGameActive || history.length === 0) return;
     const prev = history[history.length - 1];
     
-    // 1. Restore the board
     setBoardState(prev.board);
     setNotes(prev.notes);
     setHistory(p => p.slice(0, -1));
 
-    // 2. BUG FIX: Recalculate errors for the restored board
-    // We compare every number on the restored board against the solution.
     if (solution) {
       const newErrors = new Set<string>();
       prev.board.forEach((row, r) => {
         row.forEach((val, c) => {
-          // If a cell has a value, and it doesn't match the solution -> It's an error
           if (val !== 0 && val !== solution[r][c]) {
             newErrors.add(`${r}-${c}`);
           }
@@ -267,7 +264,7 @@ function GameContent() {
     return true;
   }, []);
 
-  // --- INPUT LOGIC ---
+  // --- INPUT HANDLER ---
   const handleInput = useCallback((num: number) => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard || !solution) return;
     const { row, col } = selectedCell;
@@ -289,6 +286,7 @@ function GameContent() {
     saveToHistory();
 
     if (num === solution[row][col]) {
+      // Correct Move
       const newBoard = boardState.map(r => [...r]);
       newBoard[row][col] = num;
       setBoardState(newBoard);
@@ -297,6 +295,7 @@ function GameContent() {
       newErrors.delete(`${row}-${col}`);
       setErrorCells(newErrors);
 
+      // Clear note for this cell
       setNotes(p => {
         const n = { ...p };
         delete n[`${row}-${col}`];
@@ -304,19 +303,17 @@ function GameContent() {
       });
 
       if (checkVictory(newBoard, solution)) {
-        // --- VICTORY! ---
         const score = calculateScore(timeElapsed, mistakes);
         setFinalScore(score);
-        
         setIsWon(true);
         clearGame(); 
-        
         if (score > 0) {
           updateElo(score);
         }
       }
 
     } else {
+      // Incorrect Move
       const newMistakes = mistakes + 1;
       setMistakes(newMistakes);
       const newErrors = new Set(errorCells);
@@ -327,9 +324,8 @@ function GameContent() {
       newBoard[row][col] = num;
       setBoardState(newBoard);
     }
-  }, [isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, notes, errorCells, mistakes, saveToHistory, checkVictory, config.eloReward, updateElo, clearGame, calculateScore, timeElapsed]);
+  }, [isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, calculateScore, timeElapsed]);
 
-  // --- DELETE & KEYBOARD ---
   const handleDelete = useCallback(() => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard) return;
     const { row, col } = selectedCell;
@@ -365,14 +361,21 @@ function GameContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  if (!boardState || !initialBoard) return <div className="text-white text-center mt-20">Entering the Void...</div>;
+  // --- RENDER LOADING (Entering the Void) ---
+  if (!boardState || !initialBoard) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-slate-900 text-white animate-pulse">
+        <h2 className="text-xl font-mono tracking-widest text-neon-cyan">ENTERING THE VOID...</h2>
+        <p className="text-white/40 text-sm mt-2">Generating Logic Pattern</p>
+      </div>
+    );
+  }
 
   return (
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
       style={backgroundStyle}
     >
-      
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
       
       {isWon && (
@@ -391,7 +394,7 @@ function GameContent() {
         <button onClick={handleExit} className="text-white/50 hover:text-white transition">← Exit</button>
         
         <div className="flex items-center gap-4">
-          <div className="text-white/50 font-sans text-sm">{activeMode}</div>
+          <div className="text-white/50 font-sans text-sm capitalize">{activeMode}</div>
           <div className="font-mono text-sm text-white/80 w-12 text-center">{formatTime(timeElapsed)}</div>
           
           {config.lives === Infinity ? (
@@ -439,14 +442,13 @@ function GameContent() {
           </Button>
         </div>
       </div>
-
     </main>
   );
 }
 
 export default function GamePage() {
   return (
-    <Suspense fallback={<div className="text-white text-center mt-20">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center text-white/20">Loading...</div>}>
       <GameContent />
     </Suspense>
   );
