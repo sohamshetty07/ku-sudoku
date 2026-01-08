@@ -14,36 +14,39 @@ export default withPWA({
   
   workboxOptions: {
     disableDevLogs: true,
-    // EXTENDED CACHING RULES
     runtimeCaching: [
       {
-        // Rule 1: Game Pages (Fixes the Offline Mode Crash)
-        // Matches any URL starting with /game
-        urlPattern: ({ url }) => url.pathname.startsWith("/game"),
-        handler: "NetworkFirst", // Try internet first, fallback to offline cache
+        // RULE 1: Main App Pages (Home, Game, Dashboard)
+        // FIX: Now includes checking for /dashboard and root /
+        urlPattern: ({ url }) => 
+          url.pathname === "/" || 
+          url.pathname.startsWith("/game") || 
+          url.pathname.startsWith("/dashboard"),
+          
+        handler: "NetworkFirst", // Try internet -> Fallback to Cache
         options: {
-          cacheName: "game-pages",
+          cacheName: "app-pages",
           expiration: {
             maxEntries: 50,
             maxAgeSeconds: 30 * 24 * 60 * 60, // 30 Days
           },
-          // CRITICAL FIX: This ignores '?mode=Relaxed' when looking in the cache
+          // Allows /game?mode=Relaxed to match /game in cache
           matchOptions: {
             ignoreSearch: true,
           },
         },
       },
       {
-        // Rule 2: Static Assets (Images, Fonts, JS, CSS)
+        // RULE 2: Static Assets (Images, Fonts, JS, CSS)
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?)$/i,
-        handler: "StaleWhileRevalidate", // Use cache immediately, update in background
+        handler: "StaleWhileRevalidate",
         options: {
           cacheName: "static-assets",
           expiration: { maxEntries: 200 },
         },
       },
       {
-        // Rule 3: Catch-all for other pages
+        // RULE 3: Everything else
         urlPattern: /^https?.*/,
         handler: "NetworkFirst",
         options: {
