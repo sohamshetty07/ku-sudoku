@@ -13,7 +13,7 @@ import Button from "@/components/ui/Button";
 // --- CONFIGURATION RULES ---
 const GAME_CONFIG = {
   Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 10, parTime: 600 },
-  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 },
+  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 600, parTime: 300 },
   Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 120, parTime: 1500 },
 };
 
