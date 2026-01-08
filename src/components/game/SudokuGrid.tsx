@@ -27,8 +27,10 @@ export default function SudokuGrid({
       : null;
 
   return (
-    // Container: Uses max-w-lg to constrain width on desktop, w-full for mobile
-    <div className="grid grid-cols-9 w-full max-w-lg bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
+    // UPDATED CONTAINER: 
+    // Added 'aspect-square' HERE. This guarantees the entire board is a perfect square.
+    // The grid tracks will divide this square evenly without sub-pixel gaps.
+    <div className="grid grid-cols-9 w-full max-w-lg aspect-square bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto">
       {boardState.map((row, rowIndex) =>
         row.map((cellValue, colIndex) => {
           
@@ -48,16 +50,13 @@ export default function SudokuGrid({
           const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
           const isThickBottom = (rowIndex + 1) % 3 === 0 && !isBottomEdge;
 
+          // UPDATED BORDERS: Increased opacity (10->15%, 30->40%) for sharper lines on mobile screens
           const borderClasses = `
-            ${!isRightEdge ? (isThickRight ? "border-r-2 border-r-white/30" : "border-r border-r-white/10") : ""}
-            ${!isBottomEdge ? (isThickBottom ? "border-b-2 border-b-white/30" : "border-b border-b-white/10") : ""}
+            ${!isRightEdge ? (isThickRight ? "border-r-2 border-r-white/40" : "border-r border-r-white/15") : ""}
+            ${!isBottomEdge ? (isThickBottom ? "border-b-2 border-b-white/40" : "border-b border-b-white/15") : ""}
           `;
 
           // --- TEXT COLOR PRIORITY LOGIC ---
-          // 1. Error: ALWAYS Red (Even if selected)
-          // 2. Matching Value: Amber (Unless selected)
-          // 3. Fixed: White
-          // 4. Default User Input: Cyan
           let textColorClass = "";
           
           if (isError) {
@@ -76,7 +75,12 @@ export default function SudokuGrid({
               onClick={() => onCellClick(rowIndex, colIndex)}
               className={`
                 relative flex items-center justify-center 
-                w-full aspect-square
+                
+                // UPDATED SIZING:
+                // Removed 'aspect-square'.
+                // Added 'w-full h-full' to force cell to fill the grid track perfectly.
+                w-full h-full
+                
                 text-xl sm:text-2xl md:text-3xl font-mono cursor-pointer transition-colors duration-75
                 ${borderClasses}
                 

@@ -397,8 +397,13 @@ function GameContent() {
         />
       </div>
 
-      {/* INPUTS - UPDATED: max-w-md -> max-w-lg to match grid size */}
-      <div className={`w-full max-w-lg flex flex-col gap-6 mt-6 transition-all duration-500 ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}`}>
+      {/* INPUTS */}
+      {/* FIX: Added 'items-center' and 'mx-auto' to force centering on large screens */}
+      <div className={`
+        w-full max-w-lg flex flex-col gap-6 mt-6 mx-auto items-center 
+        transition-all duration-500 
+        ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}
+      `}>
         <NumberPad 
           onNumberClick={handleInput} 
           onDelete={handleDelete} 
