@@ -2,17 +2,17 @@
 import React, { useMemo, useState, useEffect } from "react";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
-import { Trophy, Clock, Zap, Activity, ArrowUp } from "lucide-react";
+import { Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { RewardSummary } from "@/lib/progression/rewards"; // Import the type
 
 type VictoryModalProps = {
   timeElapsed: number;
   mistakes: number;
   onRetry: () => void;
-  // New Props for Analysis
   cellTimes?: Record<string, number>; 
   finalBoard?: number[][];
-  score: number; // <--- NEW: The score calculated in GamePage
+  rewards?: RewardSummary | null; // <--- The new Rewards Data
 };
 
 const formatTime = (seconds: number) => {
@@ -26,42 +26,49 @@ export default function VictoryModal({
   mistakes, 
   onRetry,
   cellTimes = {}, 
-  score,
+  rewards,
 }: VictoryModalProps) {
   
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const { elo } = useStore(); // Get current global Elo
+  const { elo } = useStore(); // Current global Elo (already updated)
   
-  // Rolling Counter State
-  const [displayedScore, setDisplayedScore] = useState(0);
-  // We assume the 'elo' in store is already updated, so we animate TO it.
-  const [displayedElo, setDisplayedElo] = useState(elo - score); 
+  // Rolling Counters
+  const [displayedXp, setDisplayedXp] = useState(0);
+  const [displayedStardust, setDisplayedStardust] = useState(0);
 
   // Animation Effect
   useEffect(() => {
-    // 1. Animate Game Score (0 -> score)
-    const scoreInterval = setInterval(() => {
-      setDisplayedScore(prev => {
-        if (prev < score) return prev + 1;
-        clearInterval(scoreInterval);
-        return score;
-      });
-    }, 20); // Fast roll (20ms)
+    if (!rewards) return;
 
-    // 2. Animate Total Elo (Old -> New)
-    const eloInterval = setInterval(() => {
-      setDisplayedElo(prev => {
-        if (prev < elo) return prev + 1;
-        clearInterval(eloInterval);
-        return elo;
+    // 1. Animate XP
+    const xpStep = Math.ceil(rewards.xp / 20);
+    const xpInterval = setInterval(() => {
+      setDisplayedXp(prev => {
+        if (prev + xpStep >= rewards.xp) {
+            clearInterval(xpInterval);
+            return rewards.xp;
+        }
+        return prev + xpStep;
       });
-    }, 20);
+    }, 30);
+
+    // 2. Animate Stardust
+    const dustStep = Math.max(1, Math.ceil(rewards.stardust / 20));
+    const dustInterval = setInterval(() => {
+      setDisplayedStardust(prev => {
+        if (prev + dustStep >= rewards.stardust) {
+            clearInterval(dustInterval);
+            return rewards.stardust;
+        }
+        return prev + dustStep;
+      });
+    }, 40);
 
     return () => {
-      clearInterval(scoreInterval);
-      clearInterval(eloInterval);
+      clearInterval(xpInterval);
+      clearInterval(dustInterval);
     };
-  }, [score, elo]);
+  }, [rewards]);
 
   // Heatmap Logic
   const maxTime = useMemo(() => {
@@ -97,40 +104,76 @@ export default function VictoryModal({
         </div>
 
         {!showHeatmap ? (
-          /* --- STATE 1: SCORECARD --- */
+          /* --- STATE 1: REWARDS --- */
           <>
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-neon-cyan/10 ring-1 ring-neon-cyan/50 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
               <Trophy size={40} className="text-neon-cyan" />
             </div>
 
-            <h2 className="mb-1 text-2xl font-bold text-white tracking-wide">Pure Logic</h2>
+            <h2 className="mb-1 text-2xl font-bold text-white tracking-wide">VICTORY</h2>
+            <p className="text-white/40 text-sm mb-6 font-mono">The Void accepts your logic.</p>
             
-            {/* DYNAMIC SCORE DISPLAY */}
-            <div className="flex items-center justify-center gap-2 mb-6">
-              <span className="text-4xl font-mono font-bold text-neon-cyan">+{displayedScore}</span>
-              <span className="text-xs text-neon-cyan/60 uppercase font-sans tracking-widest">PTS</span>
-            </div>
+            {/* REWARDS GRID */}
+            {rewards && (
+              <div className="space-y-4 mb-6">
+                
+                {/* PRIMARY STATS (ELO & XP) */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex flex-col items-center">
+                        <span className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Skill</span>
+                        <div className="flex items-center gap-1">
+                            <span className="text-xl font-mono font-bold text-white">
+                                {rewards.eloChange >= 0 ? "+" : ""}{rewards.eloChange}
+                            </span>
+                            <span className="text-xs text-white/60">ELO</span>
+                        </div>
+                    </div>
+                    <div className="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20 flex flex-col items-center">
+                        <span className="text-[10px] text-purple-300/60 uppercase tracking-widest mb-1">Experience</span>
+                        <div className="flex items-center gap-1">
+                            <span className="text-xl font-mono font-bold text-purple-400">
+                                +{displayedXp}
+                            </span>
+                            <span className="text-xs text-purple-400/60">XP</span>
+                        </div>
+                    </div>
+                </div>
 
-            {/* ELO ROLLER BOX */}
-            <div className="bg-white/5 rounded-lg p-3 mb-6 border border-white/10 flex justify-between items-center">
-               <span className="text-xs text-white/50 uppercase tracking-wider">Total Rank</span>
-               <div className="flex items-center gap-2 text-white font-mono">
-                  <span className="text-lg">{displayedElo}</span>
-                  <ArrowUp size={14} className="text-neon-cyan animate-bounce" />
-               </div>
-            </div>
+                {/* CURRENCY BOX */}
+                <div className="bg-amber-500/5 rounded-xl p-3 border border-amber-500/10 flex items-center justify-center gap-6">
+                    <div className="flex items-center gap-2">
+                        <Star size={16} className="text-amber-400 fill-amber-400" />
+                        <span className="text-xl font-mono font-bold text-amber-100">+{displayedStardust}</span>
+                    </div>
+                    {rewards.cometShards > 0 && (
+                         <div className="flex items-center gap-2">
+                            <Sparkles size={16} className="text-rose-500 fill-rose-500" />
+                            <span className="text-xl font-mono font-bold text-rose-100">+{rewards.cometShards}</span>
+                        </div>
+                    )}
+                </div>
+
+                {/* BONUSES PILLS */}
+                {rewards.bonuses.length > 0 && (
+                    <div className="flex flex-wrap gap-2 justify-center">
+                        {rewards.bonuses.map((bonus, i) => (
+                            <span key={i} className="text-[10px] bg-neon-cyan/5 text-neon-cyan px-2 py-1 rounded-full border border-neon-cyan/10">
+                                {bonus}
+                            </span>
+                        ))}
+                    </div>
+                )}
+              </div>
+            )}
             
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="flex flex-col items-center p-3 rounded-lg bg-white/5 border border-white/10">
-                <Clock size={16} className="text-white/50 mb-1" />
-                <span className="text-xl font-mono font-bold text-white">{formatTime(timeElapsed)}</span>
-                <span className="text-[10px] text-white/40 uppercase">Time</span>
-              </div>
-              <div className="flex flex-col items-center p-3 rounded-lg bg-white/5 border border-white/10">
-                <Zap size={16} className="text-white/50 mb-1" />
-                <span className="text-xl font-mono font-bold text-white">{mistakes}/3</span>
-                <span className="text-[10px] text-white/40 uppercase">Mistakes</span>
-              </div>
+            {/* MINI STATS - Updated styles here */}
+            <div className="flex justify-center gap-6 text-white font-mono mb-6 font-bold text-lg">
+                <span className="flex items-center gap-2">
+                    <Clock size={16} className="text-white/80" /> {formatTime(timeElapsed)}
+                </span>
+                <span className="flex items-center gap-2">
+                    <Zap size={16} className="text-white/80" /> {mistakes} Mistakes
+                </span>
             </div>
           </>
         ) : (
@@ -156,7 +199,7 @@ export default function VictoryModal({
         <div className="space-y-3">
           <Button variant="primary" fullWidth onClick={onRetry}>New Game</Button>
           <Link href="/" className="block w-full">
-            <Button variant="secondary" fullWidth>Return to Sanctuary</Button>
+            <Button variant="secondary" fullWidth>Return to Void</Button>
           </Link>
         </div>
 

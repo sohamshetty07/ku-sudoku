@@ -1,18 +1,23 @@
-"use client"; // <--- THIS IS THE MAGIC LINE
+"use client"; 
 
 import Button from "@/components/ui/Button";
+import AuthButton from "@/components/ui/AuthButton";
 import Link from "next/link";
+import { useSession } from "next-auth/react"; // <--- 1. Import Hook
 
 export default function Home() {
-  
+  // 2. Check Login Status
+  const { status } = useSession();
+  const isLoggedIn = status === "authenticated";
+
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden p-6">
       
-      {/* 1. Background Effects (The 'Abstract Caustics') */}
+      {/* Background Effects */}
       <div className="absolute top-[-20%] left-[-10%] h-[500px] w-[500px] rounded-full bg-violet/30 blur-[120px]" />
       <div className="absolute bottom-[-20%] right-[-10%] h-[500px] w-[500px] rounded-full bg-neon-cyan/10 blur-[120px]" />
 
-      {/* 2. The Main Content Card */}
+      {/* Main Content Card */}
       <div className="z-10 flex w-full max-w-sm flex-col items-center text-center space-y-8">
         
         {/* Branding */}
@@ -26,17 +31,22 @@ export default function Home() {
         </div>
 
         {/* Action Area */}
-        <div className="w-full pt-8">
+        <div className="w-full pt-8 space-y-4">
   
-          <Link href="/dashboard" className="block w-full mb-4">
+          {/* 3. Dynamic Play Button 
+              - Points to /dashboard so you can choose difficulty/resume.
+              - Text changes based on login status. 
+          */}
+          <Link href="/dashboard" className="block w-full">
            <Button variant="primary" fullWidth>
-              Play as Guest
+              {isLoggedIn ? "Enter the Void" : "Play as Guest"}
            </Button>
           </Link>
 
-          <Button variant="glass" fullWidth>
-            Sign In / Sync
-          </Button>
+          {/* 4. Smart Login/Sync Button */}
+          <div className="w-full">
+            <AuthButton />
+          </div>
   
         </div>
 

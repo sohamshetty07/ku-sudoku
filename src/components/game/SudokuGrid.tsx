@@ -1,6 +1,8 @@
 "use client";
 import React from "react";
 import { motion } from "framer-motion";
+import { useStore } from "@/lib/store"; // <--- 1. Import Store
+import { getThemeById } from "@/lib/store/theme"; // <--- 2. Import Theme Helper
 
 interface SudokuGridProps {
   initialBoard: number[][] | null;
@@ -19,6 +21,10 @@ export default function SudokuGrid({
   errorCells,
   notes,
 }: SudokuGridProps) {
+  // 3. Get Active Theme
+  const { activeThemeId } = useStore();
+  const theme = getThemeById(activeThemeId);
+
   if (!boardState || !initialBoard) return null;
 
   const selectedValue =
@@ -74,7 +80,9 @@ export default function SudokuGrid({
           } else if (isFixed) {
             textColorClass = "text-white/90 font-bold";
           } else {
-            textColorClass = "text-neon-cyan font-semibold";
+            // DYNAMIC THEME COLOR APPLIED HERE
+            // Was: "text-neon-cyan font-semibold"
+            textColorClass = `${theme.numColor} font-semibold`; 
           }
 
           return (
@@ -89,7 +97,7 @@ export default function SudokuGrid({
                 ${borderClasses}
                 
                 ${/* BACKGROUND STATES */ ""}
-                ${isSelected ? "bg-neon-cyan/20 z-10" : ""}
+                ${isSelected ? "bg-white/10 z-10" : ""}
                 ${!isSelected && isSameValue ? "bg-amber-500/20 shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
                 ${isError && !isSelected ? "bg-neon-red/10" : ""}
                 ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
@@ -102,7 +110,9 @@ export default function SudokuGrid({
               {isSelected && (
                 <motion.div 
                   layoutId="selection-ring" 
-                  className="absolute inset-0 border-2 border-neon-cyan z-20 pointer-events-none" 
+                  className="absolute inset-0 border-2 z-20 pointer-events-none" 
+                  // DYNAMIC ACCENT COLOR
+                  style={{ borderColor: theme.accentHex }}
                   transition={{ duration: 0.15 }} 
                 />
               )}

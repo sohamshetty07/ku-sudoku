@@ -8,13 +8,17 @@ import SudokuGrid from "@/components/game/SudokuGrid";
 import NumberPad from "@/components/game/NumberPad";
 import GameOverModal from "@/components/game/GameOverModal";
 import VictoryModal from "@/components/game/VictoryModal";
+import LevelUpModal from "@/components/progression/LevelUpModal"; 
 import Button from "@/components/ui/Button";
+import { calculateGameRewards, type RewardSummary } from "@/lib/progression/rewards"; 
+import { RANKS } from "@/lib/progression/constants";
+import { playSfx } from "@/lib/audio"; 
 
 // --- CONFIGURATION RULES ---
 const GAME_CONFIG = {
-  Relaxed:  { holes: 30, lives: Infinity, eloReward: 0, eloPenalty: 0, baseScore: 10, parTime: 600 },
-  Standard: { holes: 40, lives: 3, eloReward: 15, eloPenalty: 5, baseScore: 30, parTime: 300 },
-  Mastery:  { holes: 55, lives: 2, eloReward: 30, eloPenalty: 10, baseScore: 120, parTime: 900 },
+  Relaxed:  { holes: 30, lives: Infinity, parTime: 600 },
+  Standard: { holes: 40, lives: 3, parTime: 300 },
+  Mastery:  { holes: 55, lives: 2, parTime: 900 },
 };
 
 // Helper type for valid modes
@@ -31,18 +35,28 @@ function GameContent() {
   const router = useRouter();
   
   // --- STORE ---
-  const { updateElo, saveGame, clearGame, setThemeDifficulty } = useStore();
+  const { 
+    updateElo, 
+    saveGame, 
+    clearGame, 
+    setThemeDifficulty, 
+    elo, 
+    xp, 
+    addXp, 
+    addCurrency, 
+    incrementStats,
+    updateStreak,
+    // SETTINGS
+    timerVisible,    // <--- NEW
+    autoEraseNotes   // <--- NEW
+  } = useStore();
 
-  // 1. Get the requested mode from URL (Safe Fallback to Standard)
   const rawMode = searchParams.get("mode");
   const searchMode: GameMode = (rawMode && rawMode in GAME_CONFIG) 
     ? (rawMode as GameMode) 
     : "Standard";
 
-  // 2. Create state for the ACTUAL active mode. 
   const [activeMode, setActiveMode] = useState<GameMode>(searchMode);
-  
-  // 3. Derive config from the STATE
   const config = GAME_CONFIG[activeMode];
 
   // --- STATE ---
@@ -61,19 +75,15 @@ function GameContent() {
   const [cellTimes, setCellTimes] = useState<Record<string, number>>({}); 
   const [timeElapsed, setTimeElapsed] = useState<number>(0);
   const [isWon, setIsWon] = useState<boolean>(false);
-  const [finalScore, setFinalScore] = useState<number>(0);
+  
+  const [rewards, setRewards] = useState<RewardSummary | null>(null);
+  
+  // LEVEL UP STATE
+  const [showLevelUp, setShowLevelUp] = useState(false);
+  const [newRankId, setNewRankId] = useState<string | null>(null);
 
   const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
   const isGameActive = !isGameOver && !isWon;
-
-  // --- LOGIC: Score Calculator ---
-  const calculateScore = useCallback((elapsed: number, mistakesCount: number) => {
-    const { baseScore, parTime } = config;
-    const timeDiff = Math.max(0, parTime - elapsed);
-    const timeBonus = Math.floor(timeDiff / 10);
-    const mistakePenalty = mistakesCount * 5;
-    return Math.max(0, baseScore + timeBonus - mistakePenalty);
-  }, [config]);
 
   // --- LOGIC: Completed Numbers ---
   const completedNumbers = useMemo(() => {
@@ -89,33 +99,17 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // --- VISUALS: DYNAMIC BACKGROUND ---
-  const backgroundStyle = useMemo(() => {
-    switch (activeMode) {
-      case 'Relaxed':
-        return { background: "radial-gradient(circle at center, rgba(20, 184, 166, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
-      case 'Mastery':
-        return { background: "radial-gradient(circle at center, rgba(225, 29, 72, 0.4) 0%, #0F172A 70%, #000000 100%)" };
-      case 'Standard':
-      default:
-        return { background: "radial-gradient(circle at center, rgba(37, 99, 235, 0.4) 0%, #0F172A 70%, #0F172A 100%)" };
-    }
-  }, [activeMode]);
-
-  // --- VISUALS: SYNC THEME ---
   useEffect(() => {
     setThemeDifficulty(activeMode);
   }, [activeMode, setThemeDifficulty]);
 
-  // --- CORE: INIT & RESUME LOGIC (OFFLINE SAFE) ---
-  // This runs on the client, ensuring the generator logic is executed locally.
+  // --- CORE: INIT & RESUME ---
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
     const storeState = useStore.getState();
     const savedGame = storeState.activeGame;
 
     if (shouldResume && savedGame) {
-      // --- PATH A: RESUME GAME ---
       console.log("Resuming saved game...");
       setActiveMode(savedGame.difficulty);
       setInitialBoard(savedGame.initialBoard);
@@ -131,19 +125,16 @@ function GameContent() {
       setSelectedCell(null);
       setIsNoteMode(false);
       setIsWon(false);
-      setFinalScore(0);
+      setRewards(null);
+      setShowLevelUp(false); 
     } else {
-      // --- PATH B: GENERATE NEW GAME (Client Side) ---
       console.log("Generating new game client-side...");
       setActiveMode(searchMode); 
       
-      // Apply penalty if abandoning a valid previous game
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
-        const penalty = savedGame.mistakes * 5;
-        storeState.updateElo(-penalty);
+        storeState.updateElo(-5);
       }
 
-      // VITAL: Generate the puzzle here, on the device.
       const { initial, solved } = generateSudoku(GAME_CONFIG[searchMode].holes);
       
       setInitialBoard(initial);
@@ -158,13 +149,13 @@ function GameContent() {
       setIsNoteMode(false);
       setTimeElapsed(0);
       setIsWon(false);
-      setFinalScore(0);
+      setRewards(null);
+      setShowLevelUp(false);
       
       clearGame();
     }
   }, [searchParams, clearGame, searchMode]);
 
-  // Trigger game start on mount (or if params change)
   useEffect(() => {
     startNewGame();
   }, [startNewGame]);
@@ -192,12 +183,22 @@ function GameContent() {
   // --- CLEANUP ON GAME OVER ---
   useEffect(() => {
     if (isGameOver) {
-      if (config.eloPenalty > 0) {
-        updateElo(-config.eloPenalty);
-      }
+      playSfx('gameover'); 
+      const result = calculateGameRewards({
+        mode: activeMode,
+        timeElapsed,
+        mistakes,
+        isWin: false,
+        currentElo: elo
+      });
+
+      updateElo(result.eloChange);
+      addXp(result.xp);
+      incrementStats(false, activeMode, timeElapsed, mistakes);
+      
       clearGame();
     }
-  }, [isGameOver, clearGame, config.eloPenalty, updateElo]);
+  }, [isGameOver, clearGame, activeMode, timeElapsed, mistakes, elo, updateElo, addXp, incrementStats]);
 
   // --- TIMER ---
   useEffect(() => {
@@ -208,27 +209,21 @@ function GameContent() {
     return () => clearInterval(interval);
   }, [isGameActive, boardState]);
 
-  // --- HEATMAP TRACKER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && selectedCell) {
       interval = setInterval(() => {
         const key = `${selectedCell.row}-${selectedCell.col}`;
-        setCellTimes(prev => ({
-          ...prev,
-          [key]: (prev[key] || 0) + 1
-        }));
+        setCellTimes(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isGameActive, selectedCell]);
 
-  // --- HANDLER: Exit ---
   const handleExit = () => {
-    router.push('/');
+    router.push('/dashboard');
   };
 
-  // --- HISTORY / UNDO ---
   const saveToHistory = useCallback(() => {
     if (!boardState) return;
     setHistory(p => [...p, { board: boardState.map(r => [...r]), notes: { ...notes } }]);
@@ -237,7 +232,6 @@ function GameContent() {
   const handleUndo = useCallback(() => {
     if (!isGameActive || history.length === 0) return;
     const prev = history[history.length - 1];
-    
     setBoardState(prev.board);
     setNotes(prev.notes);
     setHistory(p => p.slice(0, -1));
@@ -264,15 +258,25 @@ function GameContent() {
     return true;
   }, []);
 
+  const handleCellClick = (row: number, col: number) => {
+    playSfx('click'); 
+    setSelectedCell({ row, col });
+  };
+
   // --- INPUT HANDLER ---
   const handleInput = useCallback((num: number) => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard || !solution) return;
     const { row, col } = selectedCell;
 
-    if (initialBoard[row][col] !== 0) return;
+    if (initialBoard[row][col] !== 0) {
+      playSfx('error');
+      return;
+    }
 
+    // 2. NOTE MODE
     if (isNoteMode) {
       if (boardState[row][col] !== 0) return;
+      playSfx('click');
       saveToHistory();
       const key = `${row}-${col}`;
       const curr = notes[key] || [];
@@ -285,8 +289,10 @@ function GameContent() {
 
     saveToHistory();
 
+    // 3. CORRECT MOVE
     if (num === solution[row][col]) {
-      // Correct Move
+      playSfx('input'); 
+
       const newBoard = boardState.map(r => [...r]);
       newBoard[row][col] = num;
       setBoardState(newBoard);
@@ -295,25 +301,77 @@ function GameContent() {
       newErrors.delete(`${row}-${col}`);
       setErrorCells(newErrors);
 
-      // Clear note for this cell
-      setNotes(p => {
-        const n = { ...p };
-        delete n[`${row}-${col}`];
-        return n;
+      // --- LOGIC: AUTO-ERASE NOTES ---
+      setNotes(prevNotes => {
+        const nextNotes = { ...prevNotes };
+        
+        // Always remove notes from the cell itself
+        delete nextNotes[`${row}-${col}`];
+
+        // If enabled, remove this number from Row, Col, and Box peers
+        if (autoEraseNotes) {
+            // Row & Col
+            for (let i = 0; i < 9; i++) {
+                const rKey = `${row}-${i}`;
+                const cKey = `${i}-${col}`;
+                if (nextNotes[rKey]) nextNotes[rKey] = nextNotes[rKey].filter(n => n !== num);
+                if (nextNotes[cKey]) nextNotes[cKey] = nextNotes[cKey].filter(n => n !== num);
+            }
+            // Box
+            const startRow = Math.floor(row / 3) * 3;
+            const startCol = Math.floor(col / 3) * 3;
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const bKey = `${startRow + r}-${startCol + c}`;
+                    if (nextNotes[bKey]) nextNotes[bKey] = nextNotes[bKey].filter(n => n !== num);
+                }
+            }
+        }
+        return nextNotes;
       });
+      // -------------------------------
 
       if (checkVictory(newBoard, solution)) {
-        const score = calculateScore(timeElapsed, mistakes);
-        setFinalScore(score);
+        playSfx('victory'); 
+        
+        const result = calculateGameRewards({
+          mode: activeMode,
+          timeElapsed,
+          mistakes,
+          isWin: true,
+          currentElo: elo
+        });
+
+        const currentXp = useStore.getState().xp; 
+        const nextXp = currentXp + result.xp;
+        
+        const oldRank = [...RANKS].reverse().find(r => currentXp >= r.minXp);
+        const newRank = [...RANKS].reverse().find(r => nextXp >= r.minXp);
+
+        if (oldRank && newRank && newRank.id !== oldRank.id) {
+          setNewRankId(newRank.id);
+          setShowLevelUp(true);
+        }
+
+        updateElo(result.eloChange);
+        addXp(result.xp);
+        addCurrency('stardust', result.stardust);
+        if (result.cometShards > 0) {
+            addCurrency('cometShards', result.cometShards);
+        }
+        
+        incrementStats(true, activeMode, timeElapsed, mistakes);
+        updateStreak();
+
+        setRewards(result);
         setIsWon(true);
         clearGame(); 
-        if (score > 0) {
-          updateElo(score);
-        }
       }
 
     } else {
-      // Incorrect Move
+      // 4. INCORRECT MOVE
+      playSfx('error'); 
+      
       const newMistakes = mistakes + 1;
       setMistakes(newMistakes);
       const newErrors = new Set(errorCells);
@@ -324,13 +382,20 @@ function GameContent() {
       newBoard[row][col] = num;
       setBoardState(newBoard);
     }
-  }, [isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, calculateScore, timeElapsed]);
+  }, [
+    isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, 
+    notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, 
+    activeMode, timeElapsed, elo, addXp, addCurrency, incrementStats, updateStreak, 
+    autoEraseNotes // <--- Dependency Added
+  ]);
 
   const handleDelete = useCallback(() => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard) return;
     const { row, col } = selectedCell;
     if (initialBoard[row][col] !== 0) return;
+    
     if (boardState[row][col] !== 0) {
+      playSfx('erase'); 
       saveToHistory();
       const newBoard = boardState.map(r => [...r]);
       newBoard[row][col] = 0;
@@ -361,7 +426,6 @@ function GameContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
-  // --- RENDER LOADING (Entering the Void) ---
   if (!boardState || !initialBoard) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-900 text-white animate-pulse">
@@ -374,8 +438,14 @@ function GameContent() {
   return (
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
-      style={backgroundStyle}
     >
+      {showLevelUp && newRankId && (
+        <LevelUpModal 
+          newRankId={newRankId} 
+          onClose={() => setShowLevelUp(false)} 
+        />
+      )}
+
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
       
       {isWon && (
@@ -385,7 +455,8 @@ function GameContent() {
           onRetry={startNewGame}
           cellTimes={cellTimes} 
           finalBoard={boardState}
-          score={finalScore} 
+          // @ts-ignore
+          rewards={rewards} 
         />
       )}
 
@@ -395,7 +466,11 @@ function GameContent() {
         
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm capitalize">{activeMode}</div>
-          <div className="font-mono text-sm text-white/80 w-12 text-center">{formatTime(timeElapsed)}</div>
+          
+          {/* UPDATED: VISIBLE TIMER SETTING */}
+          <div className="font-mono text-sm text-white/80 w-16 text-center">
+             {timerVisible ? formatTime(timeElapsed) : <span className="text-white/20 text-xs">HIDDEN</span>}
+          </div>
           
           {config.lives === Infinity ? (
              <div className="text-neon-cyan text-xl">∞</div>
@@ -418,7 +493,7 @@ function GameContent() {
           initialBoard={initialBoard}
           boardState={boardState}
           selectedCell={selectedCell}
-          onCellClick={(row, col) => setSelectedCell({ row, col })}
+          onCellClick={handleCellClick} 
           errorCells={errorCells}
           notes={notes}
         />

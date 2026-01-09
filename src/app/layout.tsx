@@ -1,15 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google"; 
 import "./globals.css";
-import ThemeBackground from "@/components/layout/ThemeBackground"; // <--- Import the new background component
+// CHANGED: Renamed to ThemeManager to reflect broader responsibility
+import ThemeManager from "@/components/layout/ThemeManager"; 
+import AuthProvider from "@/components/providers/AuthProvider";
 
-// 1. Configure the UI Font
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-// 2. Configure the Grid Number Font
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
   subsets: ["latin"],
@@ -26,9 +26,8 @@ export const metadata: Metadata = {
   },
 };
 
-// <--- VIEWPORT CONFIGURATION
 export const viewport: Viewport = {
-  themeColor: "#0F172A",
+  themeColor: "#0F172A", // Default fallback
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -44,16 +43,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        // Added fallback bg and text color here
         className={`${geistSans.variable} ${jetbrainsMono.variable} antialiased bg-[#0F172A] text-white`}
       >
-        {/* The dynamic background layer sits behind everything */}
-        <ThemeBackground />
+        <AuthProvider>
+          
+          {/* THEME MANAGER: Handles Background & Meta Colors */}
+          <ThemeManager />
 
-        {/* Main content sits above the background */}
-        <main className="relative z-10 min-h-screen">
-          {children}
-        </main>
+          <main className="relative z-10 min-h-screen">
+            {children}
+          </main>
+          
+        </AuthProvider>
       </body>
     </html>
   );
