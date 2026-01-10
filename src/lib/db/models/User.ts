@@ -7,7 +7,8 @@ const UserSchema = new mongoose.Schema({
   
   // 1. PROGRESSION (Currency & XP)
   progression: {
-    elo: { type: Number, default: 1000 },
+    // [OPTIMIZATION] Indexing ELO allows instant sorting of leaderboards
+    elo: { type: Number, default: 1000, index: true },
     xp: { type: Number, default: 0 },
     rank: { type: String, default: "Novice" },
     stardust: { type: Number, default: 0 },

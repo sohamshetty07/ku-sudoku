@@ -4,14 +4,14 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import Button from "@/components/ui/Button";
-import { Play, Lock, Zap, Clock, Trophy, Star, Sparkles, ShoppingBag, Settings } from "lucide-react";
+import { Play, Lock, Zap, Clock, Trophy, Star, Sparkles, ShoppingBag, Settings, AlertCircle } from "lucide-react";
 import RankBadge from "@/components/progression/RankBadge";
 import XpProgressBar from "@/components/progression/XpProgressBar";
 import RankInfoModal from "@/components/progression/RankInfoModal";
 
 // --- COMPONENTS ---
 
-// 1. Premium Flame (Unchanged, kept for aesthetics)
+// 1. Premium Flame (Visual Polish)
 const PremiumFlame = ({ className, isActive }: { className?: string, isActive: boolean }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className}>
     <defs>
@@ -40,7 +40,7 @@ const PremiumFlame = ({ className, isActive }: { className?: string, isActive: b
   </svg>
 );
 
-// 2. Skeleton Loader (Prevents "Flash of Default Content")
+// 2. Skeleton Loader
 const StatSkeleton = () => (
   <div className="animate-pulse bg-white/5 rounded-md h-5 w-12" />
 );
@@ -56,7 +56,7 @@ export default function Dashboard() {
     activeGame,
     themeDifficulty,
     setThemeDifficulty,
-    pushSync // NEW: Import Sync Action
+    pushSync
   } = useStore();
 
   const [showRankInfo, setShowRankInfo] = useState(false);
@@ -78,7 +78,7 @@ export default function Dashboard() {
 
     // Auto-Sync on Focus (Robustness for PWA switching)
     const onFocus = () => {
-      console.log("📲 App focused, syncing data...");
+      // console.log("📲 App focused, syncing data...");
       pushSync();
     };
 
@@ -89,10 +89,11 @@ export default function Dashboard() {
   return (
     <main 
       className="
-        relative flex flex-col items-center justify-center p-4 
-        min-h-[100dvh] /* Fix mobile browser height */
-        pt-[max(1rem,env(safe-area-inset-top))] /* iPhone Notch Safety */
-        pb-[max(1rem,env(safe-area-inset-bottom))] /* Home Indicator Safety */
+        relative w-full h-screen overflow-y-auto overflow-x-hidden
+        flex flex-col items-center 
+        p-4 pb-24 /* Extra bottom padding for scroll */
+        bg-[#0F172A] /* Fallback bg */
+        pt-[max(2rem,env(safe-area-inset-top))]
         animate-fade-in
       "
     >
@@ -103,7 +104,7 @@ export default function Dashboard() {
         currentXp={xp} 
       />
 
-      <div className="w-full max-w-md bg-glass border border-glass-border backdrop-blur-xl rounded-3xl p-6 shadow-2xl flex flex-col items-center space-y-6">
+      <div className="w-full max-w-md bg-white/5 border border-white/5 backdrop-blur-xl rounded-3xl p-6 shadow-2xl flex flex-col items-center space-y-6 mb-safe">
 
         {/* 1. IDENTITY HEADER */}
         <div className="w-full space-y-4">
@@ -121,7 +122,7 @@ export default function Dashboard() {
                         relative flex items-center justify-center w-12 h-14
                         transition-all duration-500
                         ${hasPlayedToday 
-                          ? "drop-shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse-slow" 
+                          ? "drop-shadow-[0_0_15px_rgba(251,191,36,0.6)] animate-pulse-slow scale-105" 
                           : "opacity-50 grayscale drop-shadow-[0_0_5px_rgba(255,255,255,0.1)]"
                         }
                       `}
@@ -144,12 +145,19 @@ export default function Dashboard() {
                     </div>
                 </div>
                 
-                {/* RIGHT: SETTINGS + RANK */}
+                {/* RIGHT: SETTINGS + LEADERBOARD + RANK */}
                 <div className="flex items-center gap-3">
                     {/* SETTINGS BUTTON */}
                     <Link href="/settings" className="group">
-                        <div className="p-2 rounded-full bg-white/5 border border-white/5 text-white/40 group-hover:text-white group-hover:bg-white/10 group-hover:rotate-90 transition-all duration-500">
+                        <div className="p-2.5 rounded-full bg-white/5 border border-white/5 text-white/40 group-hover:text-white group-hover:bg-white/10 group-hover:rotate-90 transition-all duration-500">
                             <Settings size={20} />
+                        </div>
+                    </Link>
+
+                    {/* [NEW] LEADERBOARD BUTTON */}
+                    <Link href="/leaderboard" className="group">
+                        <div className="p-2.5 rounded-full bg-white/5 border border-white/5 text-amber-400/60 group-hover:text-amber-400 group-hover:bg-amber-400/10 transition-all duration-500">
+                            <Trophy size={20} />
                         </div>
                     </Link>
 
@@ -221,40 +229,47 @@ export default function Dashboard() {
             )}
         </div>
 
-        {/* 2. RESUME CARD */}
+        {/* 2. RESUME CARD (Session Protection) */}
         {mounted && activeGame && (
-          <div className="w-full animate-slide-up">
-            <Link href="/game?resume=true" className="block relative overflow-hidden rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 p-4 transition-all hover:bg-neon-cyan/10 group cursor-pointer">
-              <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan" />
+          <div className="w-full animate-slide-up space-y-2">
+            <Link href="/game?resume=true" className="block relative overflow-hidden rounded-2xl border border-neon-cyan/50 bg-neon-cyan/10 p-4 transition-all hover:bg-neon-cyan/20 group cursor-pointer shadow-[0_0_20px_rgba(34,211,238,0.1)] hover:shadow-[0_0_30px_rgba(34,211,238,0.2)]">
+              <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan shadow-[0_0_10px_#22d3ee]" />
               <div className="flex justify-between items-center">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                      <span className="inline-block w-2 h-2 rounded-full bg-neon-cyan animate-pulse"/>
-                     <h3 className="text-white font-bold text-sm uppercase tracking-wide">Session Active</h3>
+                     <h3 className="text-white font-bold text-sm uppercase tracking-wide">Resume Protocol</h3>
                   </div>
-                  <p className="text-xs text-white/50 font-mono">
+                  <p className="text-xs text-cyan-200/60 font-mono">
                     {activeGame.difficulty} • {Math.floor(activeGame.timeElapsed / 60)}m {activeGame.timeElapsed % 60}s
                   </p>
                 </div>
                 <div className="h-10 w-10 rounded-full bg-neon-cyan/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Play size={18} className="text-neon-cyan fill-current ml-1" />
+                  <Play size={20} className="text-neon-cyan fill-current ml-1" />
                 </div>
               </div>
             </Link>
+            
+            {/* Divider to show separation */}
+            <div className="flex items-center gap-2 py-2 opacity-50">
+               <div className="h-px bg-white/10 flex-1"/>
+               <span className="text-[10px] text-white/40 uppercase tracking-widest">OR</span>
+               <div className="h-px bg-white/10 flex-1"/>
+            </div>
           </div>
         )}
 
         {/* 3. DIFFICULTY SELECTOR */}
         <div className="w-full space-y-3">
           <p className="text-xs text-white/30 font-sans uppercase tracking-widest text-center mb-2">
-            Select Protocol
+            Initialize New Protocol
           </p>
 
           <button
             onClick={() => setThemeDifficulty('Relaxed')} 
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
               mounted && themeDifficulty === 'Relaxed' 
-                ? 'bg-teal-500/10 border-teal-500 ring-1 ring-teal-500' 
+                ? 'bg-teal-500/10 border-teal-500 ring-1 ring-teal-500 shadow-[0_0_15px_rgba(20,184,166,0.1)]' 
                 : 'bg-white/5 border-white/5 hover:bg-white/10'
             }`}
           >
@@ -273,7 +288,7 @@ export default function Dashboard() {
             onClick={() => setThemeDifficulty('Standard')}
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
               mounted && themeDifficulty === 'Standard' 
-                ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500' 
+                ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.1)]' 
                 : 'bg-white/5 border-white/5 hover:bg-white/10'
             }`}
           >
@@ -294,7 +309,7 @@ export default function Dashboard() {
             onClick={() => mounted && !isMasteryLocked && setThemeDifficulty('Mastery')}
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
               mounted && themeDifficulty === 'Mastery'
-                ? 'bg-rose-500/10 border-rose-500 ring-1 ring-rose-500'
+                ? 'bg-rose-500/10 border-rose-500 ring-1 ring-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.1)]'
                 : 'bg-white/5 border-white/5 opacity-60'
             }`}
           >
@@ -312,13 +327,24 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* 4. START BUTTON */}
+        {/* 4. START BUTTON (With Warnings) */}
         <div className="w-full pt-2">
           <Link href={`/game?mode=${themeDifficulty}`} className="block w-full">
-              <Button variant="primary" fullWidth className="h-12 text-lg shadow-lg shadow-neon-cyan/20">
-                Enter the Void
+              <Button 
+                variant={mounted && activeGame ? "secondary" : "primary"} // Demote button if game active
+                fullWidth 
+                className={`h-12 text-lg ${mounted && activeGame ? 'border-red-500/30 text-red-400 hover:bg-red-500/10' : 'shadow-lg shadow-neon-cyan/20'}`}
+              >
+                {mounted && activeGame ? "Start New (Overwrite)" : "Enter the Void"}
               </Button>
           </Link>
+          
+          {mounted && activeGame && (
+             <div className="flex items-center justify-center gap-1 mt-2 text-[10px] text-red-400/60 font-mono">
+                <AlertCircle size={10} />
+                <span>Warning: Starting new game clears active session</span>
+             </div>
+          )}
         </div>
 
         {/* DEV ONLY: CHEAT BUTTON */}
