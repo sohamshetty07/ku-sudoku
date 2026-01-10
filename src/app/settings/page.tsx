@@ -100,7 +100,7 @@ export default function SettingsPage() {
                         disabled={deleteConfirmationText !== "DELETE" || isResetting}
                         className={`w-1/2 ${deleteConfirmationText === "DELETE" ? "bg-red-600 hover:bg-red-500 border-red-500" : "opacity-50 cursor-not-allowed bg-slate-800 border-slate-700 text-slate-500"}`}
                     >
-                        {isResetting ? "WIPING..." : "CONFIRM WIPE"}
+                        {isResetting ? "WIPING..." : "CONFIRM"}
                     </Button>
                 </div>
             </div>

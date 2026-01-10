@@ -46,10 +46,23 @@ export default function StatsPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0F172A] text-slate-200 animate-fade-in p-4 md:p-8 pb-[calc(100px+env(safe-area-inset-bottom))]">
+    <main 
+      className="
+        min-h-screen bg-[#0F172A] text-slate-200 animate-fade-in 
+        p-4 md:p-8 
+        /* Safe Area Bottom + Nav Spacing */
+        pb-[calc(100px+env(safe-area-inset-bottom))]
+      "
+    >
       
-      {/* HEADER */}
-      <div className="max-w-4xl mx-auto flex items-center gap-4 mb-8 pt-safe">
+      {/* HEADER FIX: 
+          We use calc() to add the Notch Height (env) + 2rem of aesthetic spacing.
+          This ensures it NEVER hides behind the camera.
+      */}
+      <div className="
+        max-w-4xl mx-auto flex items-center gap-4 mb-8 
+        pt-[calc(env(safe-area-inset-top)+2rem)]
+      ">
         <Link 
           href="/dashboard" 
           className="p-3 rounded-full bg-slate-800/50 hover:bg-slate-700 hover:text-white transition-all active:scale-95"
@@ -124,7 +137,7 @@ export default function StatsPage() {
               </div>
             </section>
 
-            {/* 3. RANK ANALYSIS (Placeholder visual for robustness) */}
+            {/* 3. RANK ANALYSIS */}
             <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 flex flex-col h-full shadow-xl">
                <h2 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
                 <Trophy size={14} /> Performance Analysis
