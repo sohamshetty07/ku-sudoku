@@ -4,13 +4,14 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import Button from "@/components/ui/Button";
-// 1. IMPORT SETTINGS ICON
 import { Play, Lock, Zap, Clock, Trophy, Star, Sparkles, ShoppingBag, Settings } from "lucide-react";
 import RankBadge from "@/components/progression/RankBadge";
 import XpProgressBar from "@/components/progression/XpProgressBar";
 import RankInfoModal from "@/components/progression/RankInfoModal";
 
-// --- NEW PREMIUM FLAME COMPONENT ---
+// --- COMPONENTS ---
+
+// 1. Premium Flame (Unchanged, kept for aesthetics)
 const PremiumFlame = ({ className, isActive }: { className?: string, isActive: boolean }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className}>
     <defs>
@@ -18,12 +19,10 @@ const PremiumFlame = ({ className, isActive }: { className?: string, isActive: b
         <stop offset="10%" stopColor="#ea580c" />
         <stop offset="90%" stopColor="#fbbf24" />
       </linearGradient>
-      
       <linearGradient id="inactiveFlameGradient" x1="0%" y1="100%" x2="0%" y2="0%">
         <stop offset="0%" stopColor="#4b5563" />
         <stop offset="100%" stopColor="#9ca3af" />
       </linearGradient>
-
       <filter id="innerFlameGlow" x="-50%" y="-50%" width="200%" height="200%">
         <feGaussianBlur in="SourceAlpha" stdDeviation="0.5" result="blur"/>
         <feOffset dx="0" dy="0"/>
@@ -33,7 +32,6 @@ const PremiumFlame = ({ className, isActive }: { className?: string, isActive: b
         <feComposite in2="SourceGraphic" operator="over"/>
       </filter>
     </defs>
-
     <path 
       fill={`url(#${isActive ? 'activeFlameGradient' : 'inactiveFlameGradient'})`}
       filter="url(#innerFlameGlow)"
@@ -41,7 +39,11 @@ const PremiumFlame = ({ className, isActive }: { className?: string, isActive: b
     />
   </svg>
 );
-// ------------------------------------
+
+// 2. Skeleton Loader (Prevents "Flash of Default Content")
+const StatSkeleton = () => (
+  <div className="animate-pulse bg-white/5 rounded-md h-5 w-12" />
+);
 
 export default function Dashboard() {
   const {
@@ -53,10 +55,14 @@ export default function Dashboard() {
     lastPlayedDate,
     activeGame,
     themeDifficulty,
-    setThemeDifficulty
+    setThemeDifficulty,
+    pushSync // NEW: Import Sync Action
   } = useStore();
 
   const [showRankInfo, setShowRankInfo] = useState(false);
+  
+  // HYDRATION STATE
+  const [mounted, setMounted] = useState(false);
 
   // LOGIC
   const isMasteryLocked = xp < 1500;
@@ -66,12 +72,30 @@ export default function Dashboard() {
 
   const streakFontSize = currentStreak >= 100 ? "text-base" : "text-xl";
 
+  // --- 1. MOUNT & SYNC LOGIC ---
   useEffect(() => {
-    setThemeDifficulty(themeDifficulty);
-  }, [themeDifficulty, setThemeDifficulty]);
+    setMounted(true);
+
+    // Auto-Sync on Focus (Robustness for PWA switching)
+    const onFocus = () => {
+      console.log("📲 App focused, syncing data...");
+      pushSync();
+    };
+
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [pushSync]);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-4 animate-fade-in">
+    <main 
+      className="
+        relative flex flex-col items-center justify-center p-4 
+        min-h-[100dvh] /* Fix mobile browser height */
+        pt-[max(1rem,env(safe-area-inset-top))] /* iPhone Notch Safety */
+        pb-[max(1rem,env(safe-area-inset-bottom))] /* Home Indicator Safety */
+        animate-fade-in
+      "
+    >
       
       <RankInfoModal 
         isOpen={showRankInfo} 
@@ -104,7 +128,7 @@ export default function Dashboard() {
                       title={hasPlayedToday ? "Streak Active" : "Play a game to keep the flame alive"}
                     >
                         <PremiumFlame
-                            isActive={hasPlayedToday}
+                            isActive={mounted && hasPlayedToday}
                             className="absolute inset-0 w-full h-full" 
                         />
                         <span className={`
@@ -115,14 +139,14 @@ export default function Dashboard() {
                               : "text-white/70"
                             }
                         `}>
-                            {currentStreak}
+                            {mounted ? currentStreak : "-"}
                         </span>
                     </div>
                 </div>
                 
                 {/* RIGHT: SETTINGS + RANK */}
                 <div className="flex items-center gap-3">
-                    {/* 2. SETTINGS BUTTON */}
+                    {/* SETTINGS BUTTON */}
                     <Link href="/settings" className="group">
                         <div className="p-2 rounded-full bg-white/5 border border-white/5 text-white/40 group-hover:text-white group-hover:bg-white/10 group-hover:rotate-90 transition-all duration-500">
                             <Settings size={20} />
@@ -131,17 +155,17 @@ export default function Dashboard() {
 
                     {/* RANK BADGE */}
                     <button 
-                    onClick={() => setShowRankInfo(true)}
-                    className="hover:opacity-80 transition-opacity active:scale-95"
+                      onClick={() => setShowRankInfo(true)}
+                      className="hover:opacity-80 transition-opacity active:scale-95"
                     >
-                        <RankBadge xp={xp} />
+                        <RankBadge xp={mounted ? xp : 0} />
                     </button>
                 </div>
             </div>
             
             {/* XP Bar */}
             <div className="relative group">
-               <XpProgressBar xp={xp} />
+               <XpProgressBar xp={mounted ? xp : 0} />
             </div>
 
             {/* Stats Row - CLICKABLE */}
@@ -151,28 +175,34 @@ export default function Dashboard() {
                         <span className="text-[10px] text-white/40 uppercase tracking-wider">Skill</span>
                         <div className="flex items-center gap-1 text-neon-cyan">
                             <Trophy size={12} />
-                            <span className="font-mono font-bold text-sm">{elo}</span>
+                            <span className="font-mono font-bold text-sm">
+                              {mounted ? elo : <StatSkeleton />}
+                            </span>
                         </div>
                     </div>
                     <div className="flex flex-col items-center p-2 bg-white/5 rounded-xl border border-white/5 group-hover:bg-white/10 transition-colors">
                         <span className="text-[10px] text-white/40 uppercase tracking-wider">Dust</span>
                         <div className="flex items-center gap-1 text-amber-400">
                             <Star size={12} className="fill-current" />
-                            <span className="font-mono font-bold text-sm">{stardust}</span>
+                            <span className="font-mono font-bold text-sm">
+                              {mounted ? stardust : <StatSkeleton />}
+                            </span>
                         </div>
                     </div>
                     <div className="flex flex-col items-center p-2 bg-white/5 rounded-xl border border-white/5 group-hover:bg-white/10 transition-colors">
                         <span className="text-[10px] text-white/40 uppercase tracking-wider">Shards</span>
                         <div className="flex items-center gap-1 text-rose-500">
                             <Sparkles size={12} className="fill-current" />
-                            <span className="font-mono font-bold text-sm">{cometShards}</span>
+                            <span className="font-mono font-bold text-sm">
+                              {mounted ? cometShards : <StatSkeleton />}
+                            </span>
                         </div>
                     </div>
                 </div>
             </Link>
 
             {/* SHOP BUTTON */}
-            {isShopUnlocked ? (
+            {mounted && isShopUnlocked ? (
               <Link href="/observatory" className="block w-full">
                 <button className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 hover:border-indigo-400/40 hover:from-indigo-500/20 hover:to-purple-500/20 transition-all group">
                   <ShoppingBag size={16} className="text-indigo-400 group-hover:text-indigo-300" />
@@ -185,14 +215,14 @@ export default function Dashboard() {
               <div className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 border border-white/5 opacity-50 cursor-not-allowed">
                 <Lock size={16} className="text-white/40" />
                 <span className="text-xs font-bold uppercase tracking-widest text-white/40">
-                  Observatory (Requires Seeker)
+                  {mounted ? "Observatory (Requires Seeker)" : "Loading..."}
                 </span>
               </div>
             )}
         </div>
 
         {/* 2. RESUME CARD */}
-        {activeGame && (
+        {mounted && activeGame && (
           <div className="w-full animate-slide-up">
             <Link href="/game?resume=true" className="block relative overflow-hidden rounded-2xl border border-neon-cyan/30 bg-neon-cyan/5 p-4 transition-all hover:bg-neon-cyan/10 group cursor-pointer">
               <div className="absolute top-0 left-0 w-1 h-full bg-neon-cyan" />
@@ -223,13 +253,13 @@ export default function Dashboard() {
           <button
             onClick={() => setThemeDifficulty('Relaxed')} 
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
-              themeDifficulty === 'Relaxed' 
+              mounted && themeDifficulty === 'Relaxed' 
                 ? 'bg-teal-500/10 border-teal-500 ring-1 ring-teal-500' 
                 : 'bg-white/5 border-white/5 hover:bg-white/10'
             }`}
           >
             <div className="flex items-center gap-4">
-              <div className={`p-2.5 rounded-lg ${themeDifficulty === 'Relaxed' ? 'bg-teal-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
+              <div className={`p-2.5 rounded-lg ${mounted && themeDifficulty === 'Relaxed' ? 'bg-teal-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
                 <Clock size={20} />
               </div>
               <div className="text-left">
@@ -242,13 +272,13 @@ export default function Dashboard() {
           <button
             onClick={() => setThemeDifficulty('Standard')}
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
-              themeDifficulty === 'Standard' 
+              mounted && themeDifficulty === 'Standard' 
                 ? 'bg-blue-500/10 border-blue-500 ring-1 ring-blue-500' 
                 : 'bg-white/5 border-white/5 hover:bg-white/10'
             }`}
           >
             <div className="flex items-center gap-4">
-              <div className={`p-2.5 rounded-lg ${themeDifficulty === 'Standard' ? 'bg-blue-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
+              <div className={`p-2.5 rounded-lg ${mounted && themeDifficulty === 'Standard' ? 'bg-blue-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
                 <Zap size={20} />
               </div>
               <div className="text-left">
@@ -256,26 +286,26 @@ export default function Dashboard() {
                 <div className="text-[10px] text-white/50">Rated • 100% XP</div>
               </div>
             </div>
-            {themeDifficulty === 'Standard' && <div className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_10px_#3B82F6]" />}
+            {mounted && themeDifficulty === 'Standard' && <div className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_10px_#3B82F6]" />}
           </button>
 
           <button
-            disabled={isMasteryLocked}
-            onClick={() => !isMasteryLocked && setThemeDifficulty('Mastery')}
+            disabled={!mounted || isMasteryLocked}
+            onClick={() => mounted && !isMasteryLocked && setThemeDifficulty('Mastery')}
             className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all duration-300 ${
-              themeDifficulty === 'Mastery'
+              mounted && themeDifficulty === 'Mastery'
                 ? 'bg-rose-500/10 border-rose-500 ring-1 ring-rose-500'
                 : 'bg-white/5 border-white/5 opacity-60'
             }`}
           >
             <div className="flex items-center gap-4">
-              <div className={`p-2.5 rounded-lg ${!isMasteryLocked && themeDifficulty === 'Mastery' ? 'bg-rose-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
-                {isMasteryLocked ? <Lock size={20} /> : <Trophy size={20} />}
+              <div className={`p-2.5 rounded-lg ${mounted && !isMasteryLocked && themeDifficulty === 'Mastery' ? 'bg-rose-500 text-midnight' : 'bg-white/10 text-white/50'}`}>
+                {mounted && isMasteryLocked ? <Lock size={20} /> : <Trophy size={20} />}
               </div>
               <div className="text-left">
                 <div className="text-white font-bold text-sm">Mastery</div>
                 <div className="text-[10px] text-white/50">
-                  {isMasteryLocked ? 'Requires Rank: Adept' : 'High Risk • 200% XP'}
+                  {mounted && isMasteryLocked ? 'Requires Rank: Adept' : 'High Risk • 200% XP'}
                 </div>
               </div>
             </div>
@@ -292,7 +322,7 @@ export default function Dashboard() {
         </div>
 
         {/* DEV ONLY: CHEAT BUTTON */}
-        {process.env.NODE_ENV === 'development' && (
+        {mounted && process.env.NODE_ENV === 'development' && (
           <button 
            onClick={() => useStore.setState({ stardust: 5000, cometShards: 100 })}
             className="text-[10px] text-white/20 hover:text-red-500 mt-4 uppercase tracking-widest"
