@@ -73,7 +73,7 @@ interface UserStore {
   // 8. RESET ACCOUNT
   resetProgress: () => Promise<void>; 
 
-  // 9. SYNC ACTION (PUSH & PULL) <--- NEW REPLACEMENT
+  // 9. SYNC ACTION (PUSH & PULL)
   pushSync: () => Promise<void>;
 }
 
@@ -182,12 +182,8 @@ export const useStore = create<UserStore>()(
 
       // ASYNC HARD RESET ACTION
       resetProgress: async () => {
-        try {
-          await fetch("/api/user/reset", { method: "POST" });
-        } catch (err) {
-          console.error("Failed to reset server data:", err);
-        }
-
+        // 1. IMMEDIATE LOCAL WIPE (Fixes Race Condition)
+        // We clear local state first so no background sync sends old data.
         set({
           elo: 1000,
           xp: 0,
@@ -202,7 +198,19 @@ export const useStore = create<UserStore>()(
           activeThemeId: 'midnight',
           currentStreak: 0,
           lastPlayedDate: null,
+          // Optional: Reset settings to default
+          audioEnabled: true,
+          timerVisible: true,
+          autoEraseNotes: true,
         });
+
+        // 2. SERVER WIPE
+        try {
+          await fetch("/api/user/reset", { method: "POST" });
+          console.log("✅ Server data reset.");
+        } catch (err) {
+          console.error("Failed to reset server data:", err);
+        }
       },
 
       // NEW: PUSH SYNC ACTION (Sends Local Data -> Cloud -> Updates Local with Merged Data)

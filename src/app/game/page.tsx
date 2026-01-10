@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
+import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation"; 
 import { generateSudoku } from "@/lib/sudoku/generator";
 import { useStore, type GameState } from "@/lib/store"; 
@@ -47,8 +47,8 @@ function GameContent() {
     incrementStats,
     updateStreak,
     // SETTINGS
-    timerVisible,    // <--- NEW
-    autoEraseNotes   // <--- NEW
+    timerVisible,    
+    autoEraseNotes   
   } = useStore();
 
   const rawMode = searchParams.get("mode");
@@ -60,6 +60,7 @@ function GameContent() {
   const config = GAME_CONFIG[activeMode];
 
   // --- STATE ---
+  const [mounted, setMounted] = useState(false); // Hydration fix
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null);
   const [boardState, setBoardState] = useState<number[][] | null>(null);
   const [solution, setSolution] = useState<number[][] | null>(null);
@@ -72,10 +73,12 @@ function GameContent() {
   const [notes, setNotes] = useState<Record<string, number[]>>({});
   const [history, setHistory] = useState<{ board: number[][]; notes: Record<string, number[]> }[]>([]);
 
-  const [cellTimes, setCellTimes] = useState<Record<string, number>>({}); 
-  const [timeElapsed, setTimeElapsed] = useState<number>(0);
+  // Refs for high-frequency updates (prevents re-renders/thrashing)
+  const cellTimesRef = useRef<Record<string, number>>({});
+  const timeRef = useRef(0);
+  const [timeElapsed, setTimeElapsed] = useState<number>(0); // Keep state for UI display only
+
   const [isWon, setIsWon] = useState<boolean>(false);
-  
   const [rewards, setRewards] = useState<RewardSummary | null>(null);
   
   // LEVEL UP STATE
@@ -99,6 +102,11 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
+  // Mount check
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     setThemeDifficulty(activeMode);
   }, [activeMode, setThemeDifficulty]);
@@ -116,10 +124,14 @@ function GameContent() {
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
       setMistakes(savedGame.mistakes);
+      
+      // Resume Timers
       setTimeElapsed(savedGame.timeElapsed);
+      timeRef.current = savedGame.timeElapsed;
+      cellTimesRef.current = savedGame.cellTimes || {};
+
       setNotes(savedGame.notes);
       setHistory(savedGame.history);
-      setCellTimes(savedGame.cellTimes || {}); 
       
       setErrorCells(new Set());
       setSelectedCell(null);
@@ -132,6 +144,7 @@ function GameContent() {
       setActiveMode(searchMode); 
       
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
+        // Only apply penalty if the previous game wasn't just cleared
         storeState.updateElo(-5);
       }
 
@@ -144,10 +157,14 @@ function GameContent() {
       setErrorCells(new Set());
       setNotes({});
       setHistory([]);
-      setCellTimes({}); 
+      
+      // Reset Timers
+      cellTimesRef.current = {};
+      timeRef.current = 0;
+      setTimeElapsed(0);
+
       setSelectedCell(null);
       setIsNoteMode(false);
-      setTimeElapsed(0);
       setIsWon(false);
       setRewards(null);
       setShowLevelUp(false);
@@ -160,25 +177,45 @@ function GameContent() {
     startNewGame();
   }, [startNewGame]);
 
-  // --- AUTO-SAVE ---
-  useEffect(() => {
-    if (isGameActive && boardState && initialBoard && solution) {
-      const currentGameState: GameState = {
+  // --- HELPER: CONSTRUCT GAME STATE ---
+  const getGameState = useCallback((): GameState | null => {
+    if (!boardState || !initialBoard || !solution) return null;
+    return {
         initialBoard,
         boardState,
         solution,
         notes,
         history,
         mistakes,
-        timeElapsed,
+        timeElapsed: timeRef.current, // Use fresh Ref
         difficulty: activeMode,
-        cellTimes,
+        cellTimes: cellTimesRef.current, // Use fresh Ref
         isGameOver, 
         isWon
-      };
-      saveGame(currentGameState);
+    };
+  }, [boardState, initialBoard, solution, notes, history, mistakes, activeMode, isGameOver, isWon]);
+
+  // --- AUTO-SAVE (Optimized) ---
+  // Only saves when structural state changes, NOT when time ticks.
+  useEffect(() => {
+    if (isGameActive) {
+      const state = getGameState();
+      if (state) saveGame(state);
     }
-  }, [boardState, notes, mistakes, timeElapsed, isGameActive, initialBoard, solution, history, activeMode, saveGame, cellTimes, isGameOver, isWon]);
+  }, [boardState, notes, mistakes, isGameActive, getGameState, saveGame]); // removed timeElapsed and cellTimes dependencies
+
+  // --- SAVE ON TAB SWITCH ---
+  // Ensures time is captured if user leaves without making a move
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && isGameActive) {
+        const state = getGameState();
+        if (state) saveGame(state);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [isGameActive, getGameState, saveGame]);
 
   // --- CLEANUP ON GAME OVER ---
   useEffect(() => {
@@ -186,7 +223,7 @@ function GameContent() {
       playSfx('gameover'); 
       const result = calculateGameRewards({
         mode: activeMode,
-        timeElapsed,
+        timeElapsed: timeRef.current,
         mistakes,
         isWin: false,
         currentElo: elo
@@ -194,27 +231,34 @@ function GameContent() {
 
       updateElo(result.eloChange);
       addXp(result.xp);
-      incrementStats(false, activeMode, timeElapsed, mistakes);
+      incrementStats(false, activeMode, timeRef.current, mistakes);
       
       clearGame();
     }
-  }, [isGameOver, clearGame, activeMode, timeElapsed, mistakes, elo, updateElo, addXp, incrementStats]);
+  }, [isGameOver, clearGame, activeMode, mistakes, elo, updateElo, addXp, incrementStats]);
 
-  // --- TIMER ---
+  // --- GLOBAL TIMER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && boardState) {
-      interval = setInterval(() => setTimeElapsed(p => p + 1), 1000);
+      interval = setInterval(() => {
+        // Update Ref (Source of Truth)
+        timeRef.current += 1;
+        // Update State (UI only)
+        setTimeElapsed(timeRef.current);
+      }, 1000);
     }
     return () => clearInterval(interval);
   }, [isGameActive, boardState]);
 
+  // --- CELL TIMER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && selectedCell) {
       interval = setInterval(() => {
         const key = `${selectedCell.row}-${selectedCell.col}`;
-        setCellTimes(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+        cellTimesRef.current[key] = (cellTimesRef.current[key] || 0) + 1;
+        // No state update here to avoid re-rendering grid every second
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -304,11 +348,8 @@ function GameContent() {
       // --- LOGIC: AUTO-ERASE NOTES ---
       setNotes(prevNotes => {
         const nextNotes = { ...prevNotes };
-        
-        // Always remove notes from the cell itself
         delete nextNotes[`${row}-${col}`];
 
-        // If enabled, remove this number from Row, Col, and Box peers
         if (autoEraseNotes) {
             // Row & Col
             for (let i = 0; i < 9; i++) {
@@ -329,14 +370,13 @@ function GameContent() {
         }
         return nextNotes;
       });
-      // -------------------------------
 
       if (checkVictory(newBoard, solution)) {
         playSfx('victory'); 
         
         const result = calculateGameRewards({
           mode: activeMode,
-          timeElapsed,
+          timeElapsed: timeRef.current,
           mistakes,
           isWin: true,
           currentElo: elo
@@ -360,7 +400,7 @@ function GameContent() {
             addCurrency('cometShards', result.cometShards);
         }
         
-        incrementStats(true, activeMode, timeElapsed, mistakes);
+        incrementStats(true, activeMode, timeRef.current, mistakes);
         updateStreak();
 
         setRewards(result);
@@ -385,9 +425,11 @@ function GameContent() {
   }, [
     isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, 
     notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, 
-    activeMode, timeElapsed, elo, addXp, addCurrency, incrementStats, updateStreak, 
-    autoEraseNotes // <--- Dependency Added
-  ]);
+    activeMode, elo, addXp, addCurrency, incrementStats, updateStreak, 
+    autoEraseNotes
+  ]); // removed timeElapsed dependency here as well since we use Ref in victory check? 
+      // Actually victory check uses result.timeElapsed which should be passed from timeRef.current.
+      // I updated the victory logic block above to use timeRef.current.
 
   const handleDelete = useCallback(() => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard) return;
@@ -450,10 +492,10 @@ function GameContent() {
       
       {isWon && (
         <VictoryModal 
-          timeElapsed={timeElapsed} 
+          timeElapsed={timeRef.current} 
           mistakes={mistakes} 
           onRetry={startNewGame}
-          cellTimes={cellTimes} 
+          cellTimes={cellTimesRef.current} 
           finalBoard={boardState}
           // @ts-ignore
           rewards={rewards} 
@@ -467,9 +509,12 @@ function GameContent() {
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm capitalize">{activeMode}</div>
           
-          {/* UPDATED: VISIBLE TIMER SETTING */}
+          {/* VISIBLE TIMER SETTING with Hydration Fix */}
           <div className="font-mono text-sm text-white/80 w-16 text-center">
-             {timerVisible ? formatTime(timeElapsed) : <span className="text-white/20 text-xs">HIDDEN</span>}
+             {mounted && timerVisible 
+                ? formatTime(timeElapsed) 
+                : <span className="text-white/20 text-xs">HIDDEN</span>
+             }
           </div>
           
           {config.lives === Infinity ? (

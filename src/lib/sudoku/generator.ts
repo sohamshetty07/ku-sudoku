@@ -18,16 +18,18 @@ function isValid(board: number[][], row: number, col: number, num: number): bool
 }
 
 // --- SOLVER: Count Number of Solutions (Capped at 2) ---
-// This is the "Uniqueness Checker".
 // Returns: 0 (impossible), 1 (unique), 2 (ambiguous/multiple)
 function countSolutions(board: number[][]): number {
   let count = 0;
 
   function solve(r: number, c: number): boolean {
+    // If we found more than 1 solution, stop immediately (optimization)
+    if (count > 1) return true;
+
     // If we reached past the last row, we found a valid solution
     if (r === 9) {
       count++;
-      return count > 1; // Stop searching if we found more than 1 solution
+      return false; // Continue searching to see if there is a 2nd solution
     }
 
     const nextR = c === 8 ? r + 1 : r;
@@ -49,14 +51,12 @@ function countSolutions(board: number[][]): number {
     return false;
   }
 
-  // Create a copy to solve so we don't mutate the checked board reference
-  const boardCopy = board.map(row => [...row]);
+  // Use the board directly since the caller passes a clone now
   solve(0, 0);
   return count;
 }
 
 // --- GENERATOR: Create a Full Valid Seed ---
-// Uses backtracking to fill an empty board completely
 function fillBoard(board: number[][]): boolean {
   for (let row = 0; row < 9; row++) {
     for (let col = 0; col < 9; col++) {
@@ -78,20 +78,13 @@ function fillBoard(board: number[][]): boolean {
   return true;
 }
 
-// --- MAIN EXPORT ---
-export function generateSudoku(holes: number): { initial: Grid; solved: Grid } {
-  // 1. Create Empty Board
-  const initial = Array.from({ length: 9 }, () => Array(9).fill(0));
+// --- HELPER: Dig Holes ---
+// Attempts to remove 'target' number of holes from the board
+// Returns the carved board and the actual number of holes removed
+function digHoles(solvedBoard: Grid, targetHoles: number): { board: Grid, holesRemoved: number } {
+  const board = solvedBoard.map(row => [...row]);
+  let holesRemoved = 0;
 
-  // 2. Fill it completely (The "Solution")
-  fillBoard(initial);
-  
-  // Clone the solution to keep as our Answer Key
-  const solved = initial.map(row => [...row]);
-
-  // 3. Remove numbers (Carve holes) WITH Uniqueness Check
-  let attempts = holes;
-  
   // Generate list of all positions [0,0] to [8,8]
   const positions = [];
   for (let r = 0; r < 9; r++) {
@@ -104,26 +97,68 @@ export function generateSudoku(holes: number): { initial: Grid; solved: Grid } {
   positions.sort(() => Math.random() - 0.5);
 
   for (const pos of positions) {
-    if (attempts <= 0) break;
+    if (holesRemoved >= targetHoles) break;
 
     const { r, c } = pos;
-    const removedVal = initial[r][c];
+    const removedVal = board[r][c];
     
-    // Temporarily remove the number
-    initial[r][c] = 0;
+    // Temporarily remove
+    board[r][c] = 0;
 
-    // CHECK: Does this board still have exactly 1 solution?
-    // We clone 'initial' because countSolutions mutates its input during recursion
-    const solutionsCount = countSolutions(initial.map(row => [...row]));
+    // CHECK: Is it still unique? 
+    // Clone board for solver so we don't mutate our working copy
+    const solutionsCount = countSolutions(board.map(row => [...row]));
 
     if (solutionsCount !== 1) {
-      // If 0 solutions (error) or >1 (ambiguous), put the number back!
-      initial[r][c] = removedVal;
+      // Ambiguous or invalid -> Put it back
+      board[r][c] = removedVal;
     } else {
-      // Valid removal (still unique), count it as a hole
-      attempts--;
+      // Valid removal -> Keep it
+      holesRemoved++;
     }
   }
 
-  return { initial, solved };
+  return { board, holesRemoved };
+}
+
+// --- MAIN EXPORT ---
+export function generateSudoku(holes: number): { initial: Grid; solved: Grid } {
+  let bestBoard: Grid | null = null;
+  let bestSolved: Grid | null = null;
+  let maxHolesFound = -1;
+
+  // RETRY LOGIC:
+  // If we can't carve enough holes, the seed might be too "rigid".
+  // We try up to 5 times to generate a board that supports the requested difficulty.
+  const MAX_RETRIES = 5;
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    // 1. Create Empty Board & Fill it
+    const initial = Array.from({ length: 9 }, () => Array(9).fill(0));
+    fillBoard(initial);
+    const solved = initial.map(row => [...row]);
+
+    // 2. Try to dig holes
+    const result = digHoles(solved, holes);
+
+    // 3. Check if we met the target
+    if (result.holesRemoved >= holes) {
+      // Perfect run! Return immediately.
+      return { initial: result.board, solved };
+    }
+
+    // 4. Keep track of the best attempt so far (fallback)
+    if (result.holesRemoved > maxHolesFound) {
+      maxHolesFound = result.holesRemoved;
+      bestBoard = result.board;
+      bestSolved = solved;
+    }
+  }
+
+  // If we exhaust retries, return the best we found (even if slightly easier than requested)
+  // This prevents infinite loops or crashes.
+  return { 
+    initial: bestBoard!, 
+    solved: bestSolved! 
+  };
 }
