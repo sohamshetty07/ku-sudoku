@@ -4,24 +4,27 @@ import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from "rea
 import { useSearchParams, useRouter } from "next/navigation"; 
 import { generateSudoku } from "@/lib/sudoku/generator";
 import { useStore, type GameState } from "@/lib/store"; 
+import { useGalaxyStore } from "@/lib/store/galaxy"; 
 import SudokuGrid from "@/components/game/SudokuGrid";
 import NumberPad from "@/components/game/NumberPad";
 import GameOverModal from "@/components/game/GameOverModal";
-import VictoryModal from "@/components/game/VictoryModal";
-import LevelUpModal from "@/components/progression/LevelUpModal"; 
+import VictoryModal, { type RewardSummary } from "@/components/game/VictoryModal"; 
+import LevelUpModal from "@/components/progression/LevelUpModal";
+// [NEW] Import Daily Reward
+import DailyRewardModal from "@/components/game/DailyRewardModal"; 
 import Button from "@/components/ui/Button";
-import { calculateGameRewards, type RewardSummary } from "@/lib/progression/rewards"; 
+import { calculateGameRewards } from "@/lib/progression/rewards"; 
 import { RANKS } from "@/lib/progression/constants";
 import { playSfx } from "@/lib/audio"; 
 
 // --- CONFIGURATION RULES ---
+// Note: 'lives' is now handled dynamically for Standard Mode via Store
 const GAME_CONFIG = {
-  Relaxed:  { holes: 30, lives: Infinity, parTime: 600 },
-  Standard: { holes: 40, lives: 3, parTime: 300 },
-  Mastery:  { holes: 55, lives: 2, parTime: 900 },
+  Relaxed:  { holes: 30, parTime: 600 },
+  Standard: { holes: 40, parTime: 300 },
+  Mastery:  { holes: 55, parTime: 900 },
 };
 
-// Helper type for valid modes
 type GameMode = keyof typeof GAME_CONFIG;
 
 const formatTime = (seconds: number) => {
@@ -34,7 +37,7 @@ function GameContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   
-  // --- STORE ---
+  // --- STORES ---
   const { 
     updateElo, 
     saveGame, 
@@ -46,10 +49,15 @@ function GameContent() {
     addCurrency, 
     incrementStats,
     updateStreak,
-    // SETTINGS
+    // SETTINGS & PERKS
     timerVisible,    
-    autoEraseNotes   
+    autoEraseNotes,
+    maxMistakes,   // [NEW] From Earth Perk
+    refreshPerks,  // [NEW] To check unlocks on load
+    showDailyRewardModal // [NEW] Triggered by updateStreak if Venus is unlocked
   } = useStore();
+
+  const { addHistoryStar, isNodeUnlocked } = useGalaxyStore();
 
   const rawMode = searchParams.get("mode");
   const searchMode: GameMode = (rawMode && rawMode in GAME_CONFIG) 
@@ -57,10 +65,15 @@ function GameContent() {
     : "Standard";
 
   const [activeMode, setActiveMode] = useState<GameMode>(searchMode);
-  const config = GAME_CONFIG[activeMode];
+  
+  // --- DYNAMIC LIVES CALCULATION ---
+  // Relaxed = Infinity. 
+  // Standard = Store Value (3 or 4 based on Earth Perk). 
+  // Mastery = Hardcoded 2.
+  const currentMaxLives = activeMode === 'Relaxed' ? Infinity : (activeMode === 'Standard' ? maxMistakes : 2);
 
   // --- STATE ---
-  const [mounted, setMounted] = useState(false); // Hydration fix
+  const [mounted, setMounted] = useState(false);
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null);
   const [boardState, setBoardState] = useState<number[][] | null>(null);
   const [solution, setSolution] = useState<number[][] | null>(null);
@@ -73,22 +86,21 @@ function GameContent() {
   const [notes, setNotes] = useState<Record<string, number[]>>({});
   const [history, setHistory] = useState<{ board: number[][]; notes: Record<string, number[]> }[]>([]);
 
-  // Refs for high-frequency updates (prevents re-renders/thrashing)
+  // Refs
   const cellTimesRef = useRef<Record<string, number>>({});
   const timeRef = useRef(0);
-  const [timeElapsed, setTimeElapsed] = useState<number>(0); // Keep state for UI display only
+  const [timeElapsed, setTimeElapsed] = useState<number>(0); 
 
   const [isWon, setIsWon] = useState<boolean>(false);
   const [rewards, setRewards] = useState<RewardSummary | null>(null);
   
-  // LEVEL UP STATE
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [newRankId, setNewRankId] = useState<string | null>(null);
 
-  const isGameOver = config.lives !== Infinity && mistakes >= config.lives;
+  const isGameOver = currentMaxLives !== Infinity && mistakes >= currentMaxLives;
   const isGameActive = !isGameOver && !isWon;
 
-  // --- LOGIC: Completed Numbers ---
+  // --- COMPLETED NUMBERS LOGIC ---
   const completedNumbers = useMemo(() => {
     if (!boardState || !solution) return [];
     const counts = new Array(10).fill(0);
@@ -102,16 +114,16 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // Mount check
+  // --- INIT ---
   useEffect(() => {
     setMounted(true);
-  }, []);
+    refreshPerks(); // Check Earth/Venus status immediately
+  }, [refreshPerks]);
 
   useEffect(() => {
     setThemeDifficulty(activeMode);
   }, [activeMode, setThemeDifficulty]);
 
-  // --- CORE: INIT & RESUME ---
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
     const storeState = useStore.getState();
@@ -125,7 +137,6 @@ function GameContent() {
       setBoardState(savedGame.boardState);
       setMistakes(savedGame.mistakes);
       
-      // Resume Timers
       setTimeElapsed(savedGame.timeElapsed);
       timeRef.current = savedGame.timeElapsed;
       cellTimesRef.current = savedGame.cellTimes || {};
@@ -144,7 +155,6 @@ function GameContent() {
       setActiveMode(searchMode); 
       
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
-        // Only apply penalty if the previous game wasn't just cleared
         storeState.updateElo(-5);
       }
 
@@ -158,7 +168,6 @@ function GameContent() {
       setNotes({});
       setHistory([]);
       
-      // Reset Timers
       cellTimesRef.current = {};
       timeRef.current = 0;
       setTimeElapsed(0);
@@ -177,7 +186,7 @@ function GameContent() {
     startNewGame();
   }, [startNewGame]);
 
-  // --- HELPER: CONSTRUCT GAME STATE ---
+  // --- AUTO-SAVE ---
   const getGameState = useCallback((): GameState | null => {
     if (!boardState || !initialBoard || !solution) return null;
     return {
@@ -187,25 +196,21 @@ function GameContent() {
         notes,
         history,
         mistakes,
-        timeElapsed: timeRef.current, // Use fresh Ref
+        timeElapsed: timeRef.current, 
         difficulty: activeMode,
-        cellTimes: cellTimesRef.current, // Use fresh Ref
+        cellTimes: cellTimesRef.current,
         isGameOver, 
         isWon
     };
   }, [boardState, initialBoard, solution, notes, history, mistakes, activeMode, isGameOver, isWon]);
 
-  // --- AUTO-SAVE (Optimized) ---
-  // Only saves when structural state changes, NOT when time ticks.
   useEffect(() => {
     if (isGameActive) {
       const state = getGameState();
       if (state) saveGame(state);
     }
-  }, [boardState, notes, mistakes, isGameActive, getGameState, saveGame]); // removed timeElapsed and cellTimes dependencies
+  }, [boardState, notes, mistakes, isGameActive, getGameState, saveGame]); 
 
-  // --- SAVE ON TAB SWITCH ---
-  // Ensures time is captured if user leaves without making a move
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && isGameActive) {
@@ -217,7 +222,7 @@ function GameContent() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [isGameActive, getGameState, saveGame]);
 
-  // --- CLEANUP ON GAME OVER ---
+  // --- GAME OVER ---
   useEffect(() => {
     if (isGameOver) {
       playSfx('gameover'); 
@@ -230,35 +235,30 @@ function GameContent() {
       });
 
       updateElo(result.eloChange);
-      addXp(result.xp);
+      addXp(result.xp); 
       incrementStats(false, activeMode, timeRef.current, mistakes);
-      
       clearGame();
     }
   }, [isGameOver, clearGame, activeMode, mistakes, elo, updateElo, addXp, incrementStats]);
 
-  // --- GLOBAL TIMER ---
+  // --- TIMERS ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && boardState) {
       interval = setInterval(() => {
-        // Update Ref (Source of Truth)
         timeRef.current += 1;
-        // Update State (UI only)
         setTimeElapsed(timeRef.current);
       }, 1000);
     }
     return () => clearInterval(interval);
   }, [isGameActive, boardState]);
 
-  // --- CELL TIMER ---
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && selectedCell) {
       interval = setInterval(() => {
         const key = `${selectedCell.row}-${selectedCell.col}`;
         cellTimesRef.current[key] = (cellTimesRef.current[key] || 0) + 1;
-        // No state update here to avoid re-rendering grid every second
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -275,6 +275,7 @@ function GameContent() {
 
   const handleUndo = useCallback(() => {
     if (!isGameActive || history.length === 0) return;
+    
     const prev = history[history.length - 1];
     setBoardState(prev.board);
     setNotes(prev.notes);
@@ -307,7 +308,7 @@ function GameContent() {
     setSelectedCell({ row, col });
   };
 
-  // --- INPUT HANDLER ---
+  // --- INPUT & VICTORY LOGIC ---
   const handleInput = useCallback((num: number) => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard || !solution) return;
     const { row, col } = selectedCell;
@@ -317,7 +318,6 @@ function GameContent() {
       return;
     }
 
-    // 2. NOTE MODE
     if (isNoteMode) {
       if (boardState[row][col] !== 0) return;
       playSfx('click');
@@ -333,7 +333,6 @@ function GameContent() {
 
     saveToHistory();
 
-    // 3. CORRECT MOVE
     if (num === solution[row][col]) {
       playSfx('input'); 
 
@@ -345,20 +344,16 @@ function GameContent() {
       newErrors.delete(`${row}-${col}`);
       setErrorCells(newErrors);
 
-      // --- LOGIC: AUTO-ERASE NOTES ---
       setNotes(prevNotes => {
         const nextNotes = { ...prevNotes };
         delete nextNotes[`${row}-${col}`];
-
         if (autoEraseNotes) {
-            // Row & Col
             for (let i = 0; i < 9; i++) {
                 const rKey = `${row}-${i}`;
                 const cKey = `${i}-${col}`;
                 if (nextNotes[rKey]) nextNotes[rKey] = nextNotes[rKey].filter(n => n !== num);
                 if (nextNotes[cKey]) nextNotes[cKey] = nextNotes[cKey].filter(n => n !== num);
             }
-            // Box
             const startRow = Math.floor(row / 3) * 3;
             const startCol = Math.floor(col / 3) * 3;
             for (let r = 0; r < 3; r++) {
@@ -374,7 +369,8 @@ function GameContent() {
       if (checkVictory(newBoard, solution)) {
         playSfx('victory'); 
         
-        const result = calculateGameRewards({
+        // 1. Calculate Base Rewards
+        const baseRewards = calculateGameRewards({
           mode: activeMode,
           timeElapsed: timeRef.current,
           mistakes,
@@ -382,9 +378,37 @@ function GameContent() {
           currentElo: elo
         });
 
-        const currentXp = useStore.getState().xp; 
-        const nextXp = currentXp + result.xp;
+        // 2. Add Galaxy Star
+        addHistoryStar();
+
+        // 3. Update Progression (Store adds boosts internally)
+        updateElo(baseRewards.eloChange);
+        addXp(baseRewards.xp); 
+        addCurrency('stardust', baseRewards.stardust);
+        if (baseRewards.cometShards > 0) {
+            addCurrency('cometShards', baseRewards.cometShards);
+        }
         
+        incrementStats(true, activeMode, timeRef.current, mistakes);
+        updateStreak(); // This triggers showDailyRewardModal if Venus unlocked
+
+        // 4. Construct UI Rewards (With Visual Boosts)
+        const bonuses: string[] = [...(baseRewards.bonuses || [])];
+        let uiXp = baseRewards.xp;
+        let uiStardust = baseRewards.stardust;
+
+        // Check Perks for UI Display only (Logic matches store)
+        if (isNodeUnlocked('mercury')) {
+            uiStardust = Math.floor(uiStardust * 1.10);
+            bonuses.push("Mercury Bonus");
+        }
+        if (isNodeUnlocked('mars')) {
+            uiXp = Math.floor(uiXp * 1.15);
+            bonuses.push("Mars Bonus");
+        }
+
+        const currentXp = useStore.getState().xp; 
+        const nextXp = currentXp + uiXp;
         const oldRank = [...RANKS].reverse().find(r => currentXp >= r.minXp);
         const newRank = [...RANKS].reverse().find(r => nextXp >= r.minXp);
 
@@ -393,25 +417,19 @@ function GameContent() {
           setShowLevelUp(true);
         }
 
-        updateElo(result.eloChange);
-        addXp(result.xp);
-        addCurrency('stardust', result.stardust);
-        if (result.cometShards > 0) {
-            addCurrency('cometShards', result.cometShards);
-        }
+        setRewards({
+            ...baseRewards,
+            xp: uiXp,
+            stardust: uiStardust,
+            bonuses: bonuses
+        });
         
-        incrementStats(true, activeMode, timeRef.current, mistakes);
-        updateStreak();
-
-        setRewards(result);
         setIsWon(true);
         clearGame(); 
       }
 
     } else {
-      // 4. INCORRECT MOVE
       playSfx('error'); 
-      
       const newMistakes = mistakes + 1;
       setMistakes(newMistakes);
       const newErrors = new Set(errorCells);
@@ -426,10 +444,8 @@ function GameContent() {
     isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, 
     notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, 
     activeMode, elo, addXp, addCurrency, incrementStats, updateStreak, 
-    autoEraseNotes
-  ]); // removed timeElapsed dependency here as well since we use Ref in victory check? 
-      // Actually victory check uses result.timeElapsed which should be passed from timeRef.current.
-      // I updated the victory logic block above to use timeRef.current.
+    autoEraseNotes, addHistoryStar, isNodeUnlocked
+  ]);
 
   const handleDelete = useCallback(() => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard) return;
@@ -481,6 +497,10 @@ function GameContent() {
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
     >
+      {/* 1. DAILY REWARD (Top Priority) */}
+      {showDailyRewardModal && <DailyRewardModal />}
+
+      {/* 2. LEVEL UP */}
       {showLevelUp && newRankId && (
         <LevelUpModal 
           newRankId={newRankId} 
@@ -488,16 +508,18 @@ function GameContent() {
         />
       )}
 
+      {/* 3. GAME OVER */}
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
       
+      {/* 4. VICTORY */}
       {isWon && (
         <VictoryModal 
           timeElapsed={timeRef.current} 
           mistakes={mistakes} 
           onRetry={startNewGame}
           cellTimes={cellTimesRef.current} 
-          finalBoard={boardState}
-          // @ts-ignore
+          // FIX: Convert 'null' to 'undefined' so TypeScript accepts it
+          finalBoard={boardState ?? undefined}
           rewards={rewards} 
         />
       )}
@@ -509,7 +531,7 @@ function GameContent() {
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm capitalize">{activeMode}</div>
           
-          {/* VISIBLE TIMER SETTING with Hydration Fix */}
+          {/* VISIBLE TIMER */}
           <div className="font-mono text-sm text-white/80 w-16 text-center">
              {mounted && timerVisible 
                 ? formatTime(timeElapsed) 
@@ -517,11 +539,11 @@ function GameContent() {
              }
           </div>
           
-          {config.lives === Infinity ? (
+          {currentMaxLives === Infinity ? (
              <div className="text-neon-cyan text-xl">∞</div>
           ) : (
-            <div className={`font-mono text-sm font-bold ${mistakes >= config.lives ? "text-neon-red" : "text-neon-cyan"}`}>
-              {mistakes}/{config.lives}
+            <div className={`font-mono text-sm font-bold ${mistakes >= currentMaxLives ? "text-neon-red" : "text-neon-cyan"}`}>
+              {mistakes}/{currentMaxLives}
             </div>
           )}
         </div>

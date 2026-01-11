@@ -14,7 +14,8 @@ const getContext = () => {
   return audioCtx;
 };
 
-type SoundType = 'click' | 'input' | 'error' | 'erase' | 'gameover' | 'victory';
+// [UPDATED] Added 'heavy-impact' to types
+type SoundType = 'click' | 'input' | 'error' | 'erase' | 'gameover' | 'victory' | 'heavy-impact';
 
 export const playSfx = (type: SoundType) => {
   // 1. Check if Audio is Enabled in Store
@@ -149,6 +150,66 @@ export const playSfx = (type: SoundType) => {
         
         osc.start(now);
         osc.stop(now + 1);
+        break;
+    }
+
+    // [NEW] "GENESIS" IMPACT SOUND
+    case 'heavy-impact': {
+        // 1. The Sub-Bass (Impact Thud)
+        const subOsc = ctx.createOscillator();
+        const subGain = ctx.createGain();
+        subOsc.connect(subGain);
+        subGain.connect(ctx.destination);
+
+        subOsc.type = 'sine';
+        subOsc.frequency.setValueAtTime(150, now); // Start low mid
+        subOsc.frequency.exponentialRampToValueAtTime(40, now + 0.4); // Drop to sub bass
+
+        subGain.gain.setValueAtTime(0.6, now); // Loud start
+        subGain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+
+        subOsc.start(now);
+        subOsc.stop(now + 0.6);
+
+        // 2. The Atmospheric Rumble (Sawtooth + Low Pass Filter)
+        const rumbleOsc = ctx.createOscillator();
+        const rumbleGain = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+
+        rumbleOsc.connect(filter);
+        filter.connect(rumbleGain);
+        rumbleGain.connect(ctx.destination);
+
+        rumbleOsc.type = 'sawtooth';
+        rumbleOsc.frequency.setValueAtTime(60, now); // Deep drone
+
+        // Filter sweep to simulate "dust clearing"
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(200, now);
+        filter.frequency.linearRampToValueAtTime(50, now + 1.5);
+
+        rumbleGain.gain.setValueAtTime(0.2, now);
+        rumbleGain.gain.linearRampToValueAtTime(0, now + 1.5); // Long fade
+
+        rumbleOsc.start(now);
+        rumbleOsc.stop(now + 1.5);
+
+        // 3. The "Divine" Shine (High Frequency Shimmer)
+        const shineOsc = ctx.createOscillator();
+        const shineGain = ctx.createGain();
+        shineOsc.connect(shineGain);
+        shineGain.connect(ctx.destination);
+
+        shineOsc.type = 'triangle';
+        shineOsc.frequency.setValueAtTime(440, now); // A4
+        shineOsc.frequency.exponentialRampToValueAtTime(880, now + 2); // Slow rise to A5
+
+        shineGain.gain.setValueAtTime(0, now);
+        shineGain.gain.linearRampToValueAtTime(0.05, now + 0.1); // Soft attack
+        shineGain.gain.exponentialRampToValueAtTime(0.001, now + 2.5); // Very long tail
+
+        shineOsc.start(now);
+        shineOsc.stop(now + 2.5);
         break;
     }
   }

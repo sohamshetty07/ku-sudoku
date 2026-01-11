@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useGalaxyStore } from '@/lib/store/galaxy'; 
 
 // --- TYPES ---
 export interface GameState {
@@ -32,7 +33,7 @@ interface UserStore {
   unlockedThemes: string[];
   unlockTheme: (themeId: string) => void;
 
-  // 3. LIFETIME STATS (Detailed)
+  // 3. LIFETIME STATS
   gamesPlayed: number;
   gamesWon: number;
   flawlessWins: number;
@@ -43,16 +44,23 @@ interface UserStore {
   };
   incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery', time: number, mistakes: number) => void;
 
-  // 4. GAME STATE (Active Session)
+  // 4. GAME STATE
   activeGame: GameState | null;
   saveGame: (game: GameState) => void;
   clearGame: () => void;
+
+  // PERKS STATE
+  maxMistakes: number; 
+  refreshPerks: () => void; 
+
+  // DAILY REWARD MODAL STATE
+  showDailyRewardModal: boolean;
+  closeDailyRewardModal: () => void;
 
   // 5. VISUALS
   themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery';
   setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery') => void;
   
-  // Active Theme State
   activeThemeId: string;
   setActiveTheme: (themeId: string) => void;
 
@@ -61,7 +69,7 @@ interface UserStore {
   lastPlayedDate: string | null; 
   updateStreak: () => void;
 
-  // 7. SETTINGS (AUDIO & GAMEPLAY)
+  // 7. SETTINGS
   audioEnabled: boolean;
   timerVisible: boolean;      
   autoEraseNotes: boolean;    
@@ -73,7 +81,7 @@ interface UserStore {
   // 8. RESET ACCOUNT
   resetProgress: () => Promise<void>; 
 
-  // 9. SYNC ACTION (PUSH & PULL)
+  // 9. SYNC ACTION
   pushSync: () => Promise<void>;
 }
 
@@ -93,14 +101,16 @@ export const useStore = create<UserStore>()(
       bestTimes: { Relaxed: null, Standard: null, Mastery: null },
       
       activeGame: null,
+      maxMistakes: 3, 
+      
+      showDailyRewardModal: false,
+
       themeDifficulty: 'Standard',
       activeThemeId: 'midnight',
       
-      // Streak Defaults
       currentStreak: 0,
       lastPlayedDate: null,
 
-      // Settings Defaults
       audioEnabled: true,
       timerVisible: true,     
       autoEraseNotes: true,   
@@ -108,11 +118,25 @@ export const useStore = create<UserStore>()(
       // ACTIONS
       updateElo: (change) => set((state) => ({ elo: state.elo + change })),
       
-      addXp: (amount) => set((state) => ({ xp: state.xp + amount })),
+      addXp: (amount) => set((state) => {
+        let finalAmount = amount;
+        const isMarsUnlocked = useGalaxyStore.getState().isNodeUnlocked('mars');
+        if (isMarsUnlocked) {
+            finalAmount = Math.floor(amount * 1.15); 
+        }
+        return { xp: state.xp + finalAmount };
+      }),
       
-      addCurrency: (type, amount) => set((state) => ({ 
-        [type]: state[type] + amount 
-      })),
+      addCurrency: (type, amount) => set((state) => {
+        let finalAmount = amount;
+        if (type === 'stardust') {
+           const isMercuryUnlocked = useGalaxyStore.getState().isNodeUnlocked('mercury');
+           if (isMercuryUnlocked) {
+               finalAmount = Math.floor(amount * 1.10); 
+           }
+        }
+        return { [type]: state[type] + finalAmount };
+      }),
       
       unlockTheme: (themeId) => set((state) => ({
         unlockedThemes: state.unlockedThemes.includes(themeId) 
@@ -120,23 +144,23 @@ export const useStore = create<UserStore>()(
           : [...state.unlockedThemes, themeId]
       })),
 
+      refreshPerks: () => {
+        const isEarthUnlocked = useGalaxyStore.getState().isNodeUnlocked('earth');
+        set({ maxMistakes: isEarthUnlocked ? 4 : 3 });
+      },
+
+      closeDailyRewardModal: () => set({ showDailyRewardModal: false }),
+
       incrementStats: (isWin, mode, time, mistakes) => set((state) => {
         const newGamesPlayed = state.gamesPlayed + 1;
-
-        if (!isWin) {
-          return { gamesPlayed: newGamesPlayed };
-        }
+        if (!isWin) return { gamesPlayed: newGamesPlayed };
 
         const newGamesWon = state.gamesWon + 1;
-        
-        // Flawless Check
         const isFlawless = mistakes === 0;
         const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
 
-        // Best Time Check (Lower is better)
         const currentBest = state.bestTimes[mode];
         let newBestTime = currentBest;
-        
         if (currentBest === null || time < currentBest) {
           newBestTime = time;
         }
@@ -145,10 +169,7 @@ export const useStore = create<UserStore>()(
           gamesPlayed: newGamesPlayed,
           gamesWon: newGamesWon,
           flawlessWins: newFlawlessWins,
-          bestTimes: {
-            ...state.bestTimes,
-            [mode]: newBestTime
-          }
+          bestTimes: { ...state.bestTimes, [mode]: newBestTime }
         };
       }),
 
@@ -159,31 +180,32 @@ export const useStore = create<UserStore>()(
 
       updateStreak: () => set((state) => {
         const today = new Date().toISOString().split('T')[0];
-        
-        if (state.lastPlayedDate === today) {
-          return {}; 
-        }
+        if (state.lastPlayedDate === today) return {}; 
 
         const yesterday = new Date();
         yesterday.setDate(yesterday.getDate() - 1);
         const yesterdayString = yesterday.toISOString().split('T')[0];
 
-        if (state.lastPlayedDate === yesterdayString) {
-          return { currentStreak: state.currentStreak + 1, lastPlayedDate: today };
-        } else {
-          return { currentStreak: 1, lastPlayedDate: today };
-        }
+        const newStreak = (state.lastPlayedDate === yesterdayString) ? state.currentStreak + 1 : 1;
+
+        const isVenusUnlocked = useGalaxyStore.getState().isNodeUnlocked('venus');
+        const stardustBonus = isVenusUnlocked ? 50 : 0;
+
+        return { 
+            currentStreak: newStreak, 
+            lastPlayedDate: today,
+            stardust: state.stardust + stardustBonus,
+            showDailyRewardModal: isVenusUnlocked
+        };
       }),
 
-      // SETTINGS ACTIONS
       toggleAudio: () => set((state) => ({ audioEnabled: !state.audioEnabled })),
       toggleTimer: () => set((state) => ({ timerVisible: !state.timerVisible })),
       toggleAutoErase: () => set((state) => ({ autoEraseNotes: !state.autoEraseNotes })),
 
-      // ASYNC HARD RESET ACTION
+      // [UPDATED] RESET PROGRESS (Clears Galaxy Too)
       resetProgress: async () => {
-        // 1. IMMEDIATE LOCAL WIPE (Fixes Race Condition)
-        // We clear local state first so no background sync sends old data.
+        // 1. Reset Main Store
         set({
           elo: 1000,
           xp: 0,
@@ -198,13 +220,17 @@ export const useStore = create<UserStore>()(
           activeThemeId: 'midnight',
           currentStreak: 0,
           lastPlayedDate: null,
-          // Optional: Reset settings to default
+          maxMistakes: 3, 
+          showDailyRewardModal: false, 
           audioEnabled: true,
           timerVisible: true,
           autoEraseNotes: true,
         });
 
-        // 2. SERVER WIPE
+        // 2. [NEW] Reset Galaxy Store
+        useGalaxyStore.getState().resetGalaxy();
+
+        // 3. Reset Server
         try {
           await fetch("/api/user/reset", { method: "POST" });
           console.log("✅ Server data reset.");
@@ -213,18 +239,19 @@ export const useStore = create<UserStore>()(
         }
       },
 
-      // NEW: PUSH SYNC ACTION (Sends Local Data -> Cloud -> Updates Local with Merged Data)
+      // [UPDATED] PUSH SYNC ACTION (Includes Galaxy Data)
       pushSync: async () => {
         const state = get();
+        // [NEW] Get Galaxy State directly
+        const galaxyState = useGalaxyStore.getState();
         
-        // 1. Prepare Payload
         const payload = {
+          // --- USER STATS ---
           elo: state.elo,
           xp: state.xp,
           stardust: state.stardust,
           cometShards: state.cometShards,
           unlockedThemes: state.unlockedThemes,
-          
           gamesPlayed: state.gamesPlayed,
           gamesWon: state.gamesWon,
           flawlessWins: state.flawlessWins,
@@ -232,10 +259,15 @@ export const useStore = create<UserStore>()(
           lastPlayedDate: state.lastPlayedDate,
           bestTimes: state.bestTimes,
           
+          // --- SETTINGS ---
           activeThemeId: state.activeThemeId,
           audioEnabled: state.audioEnabled,
           timerVisible: state.timerVisible,
           autoEraseNotes: state.autoEraseNotes,
+
+          // [NEW] GALAXY DATA (Added to Payload)
+          unlockedNodeIds: galaxyState.unlockedNodeIds,
+          historyStars: galaxyState.historyStars,
         };
 
         try {
@@ -249,36 +281,44 @@ export const useStore = create<UserStore>()(
           const data = await res.json();
           
           if (data.success && data.user) {
-             // 2. Merge Cloud Data Back
              const u = data.user;
              const p = u.progression || {};
              const s = u.stats || {};
              const pref = u.settings || {};
+             // [NEW] Galaxy Data from DB
+             const g = u.galaxy || {}; 
 
+             // 1. Update Main Store
              set({
                elo: p.elo,
                xp: p.xp,
                stardust: p.stardust,
                cometShards: p.cometShards,
                unlockedThemes: p.unlockedThemes,
-               
                gamesPlayed: s.gamesPlayed,
                gamesWon: s.gamesWon,
                flawlessWins: s.flawlessWins,
                currentStreak: s.currentStreak,
                lastPlayedDate: s.lastPlayedDate,
-               
                bestTimes: {
                  Relaxed: s.bestTimeRelaxed || null,
                  Standard: s.bestTimeStandard || null,
                  Mastery: s.bestTimeMastery || null,
                },
-               
                activeThemeId: pref.activeThemeId || 'midnight',
                audioEnabled: pref.audioEnabled ?? true,
                timerVisible: pref.timerVisible ?? true,
                autoEraseNotes: pref.autoEraseNotes ?? true,
              });
+
+             // 2. [NEW] Update Galaxy Store from Cloud Data
+             if (g.unlockedNodeIds) {
+                 useGalaxyStore.setState({ 
+                     unlockedNodeIds: g.unlockedNodeIds,
+                     historyStars: g.historyStars || [] 
+                 });
+             }
+
              console.log("✅ Sync successful.");
           }
         } catch (err) {

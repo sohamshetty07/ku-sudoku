@@ -39,6 +39,19 @@ const UserSchema = new mongoose.Schema({
     autoEraseNotes: { type: Boolean, default: true },
   },
 
+  // 4. [NEW] GALAXY DATA (Astral Chart)
+  galaxy: {
+    unlockedNodeIds: { type: [String], default: ['sun'] }, // e.g. ['sun', 'mercury']
+    historyStars: [{
+      id: String,
+      x: Number,
+      y: Number,
+      size: Number,
+      opacity: Number,
+      dateUnlocked: String
+    }]
+  },
+
   lastSyncedAt: { type: Date, default: Date.now },
 });
 

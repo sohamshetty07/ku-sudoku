@@ -50,18 +50,24 @@ export function calculateGameRewards(result: GameResult): RewardSummary {
       bonuses.push("Mastery Bonus");
     }
 
-    // --- NEW: TIME BONUS LOGIC ---
-    // Standard Par: 300s (5m) | Mastery Par: 900s (15m)
+    // --- TIME BONUS LOGIC ---
     const parTime = result.mode === 'Mastery' ? 900 : 300;
     
-    if (result.timeElapsed < parTime) {
+    // Safety check: Don't reward games faster than 10 seconds (Anti-cheat/Bug)
+    if (result.timeElapsed < parTime && result.timeElapsed > 10) {
       const timeSaved = parTime - result.timeElapsed;
-      // +1 Stardust for every 30 seconds saved
+      
+      // Multiplier: Mastery time is worth more? 
+      // Current: 1 Dust per 30s.
+      // Suggestion: 1 Dust per 15s?
       const timeBonus = Math.floor(timeSaved / 30) * REWARDS.STARDUST_PER_30S_SAVED;
       
-      if (timeBonus > 0) {
-        stardust += timeBonus;
-        bonuses.push(`Speed Bonus (+${timeBonus} Dust)`);
+      // Cap the bonus to prevent economy breaking (e.g., max 20 dust)
+      const finalBonus = Math.min(timeBonus, 20);
+
+      if (finalBonus > 0) {
+        stardust += finalBonus;
+        bonuses.push(`Speed Bonus (+${finalBonus} Dust)`);
       }
     }
 

@@ -3,15 +3,17 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
+import { useSession } from "next-auth/react"; // <--- IMPORT SESSION
 import Button from "@/components/ui/Button";
-import { Play, Lock, Zap, Clock, Trophy, Star, Sparkles, ShoppingBag, Settings, AlertCircle } from "lucide-react";
+import { 
+  Play, Lock, Zap, Clock, Trophy, Star, Sparkles, 
+  ShoppingBag, Settings, AlertCircle, Telescope, Palette 
+} from "lucide-react";
 import RankBadge from "@/components/progression/RankBadge";
 import XpProgressBar from "@/components/progression/XpProgressBar";
 import RankInfoModal from "@/components/progression/RankInfoModal";
 
-// --- COMPONENTS ---
-
-// 1. Premium Flame (Visual Polish)
+// --- COMPONENTS (Unchanged) ---
 const PremiumFlame = ({ className, isActive }: { className?: string, isActive: boolean }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" className={className}>
     <defs>
@@ -40,12 +42,15 @@ const PremiumFlame = ({ className, isActive }: { className?: string, isActive: b
   </svg>
 );
 
-// 2. Skeleton Loader
 const StatSkeleton = () => (
   <div className="animate-pulse bg-white/5 rounded-md h-5 w-12" />
 );
 
 export default function Dashboard() {
+  // 1. GET SESSION (To fix 401 Error)
+  const { status } = useSession();
+  const isLoggedIn = status === "authenticated";
+
   const {
     elo,
     xp,
@@ -60,39 +65,40 @@ export default function Dashboard() {
   } = useStore();
 
   const [showRankInfo, setShowRankInfo] = useState(false);
-  
-  // HYDRATION STATE
   const [mounted, setMounted] = useState(false);
 
   // LOGIC
   const isMasteryLocked = xp < 1500;
-  const isShopUnlocked = xp >= 500;
+  const isShopUnlocked = xp >= 500; // Keep Shop locked for Seekers
+  // CHANGE: Galaxy is ALWAYS unlocked now so new players can see history stars
+  const isGalaxyUnlocked = true; 
+
   const today = new Date().toISOString().split('T')[0];
   const hasPlayedToday = lastPlayedDate === today;
-
   const streakFontSize = currentStreak >= 100 ? "text-base" : "text-xl";
 
-  // --- 1. MOUNT & SYNC LOGIC ---
+  // --- MOUNT & SYNC LOGIC ---
   useEffect(() => {
     setMounted(true);
-
-    // Auto-Sync on Focus (Robustness for PWA switching)
+    
+    // FIX: Only sync if User is Logged In
     const onFocus = () => {
-      // console.log("📲 App focused, syncing data...");
-      pushSync();
+      if (isLoggedIn) {
+         pushSync();
+      }
     };
 
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [pushSync]);
+  }, [pushSync, isLoggedIn]);
 
   return (
     <main 
       className="
         relative w-full h-screen overflow-y-auto overflow-x-hidden
         flex flex-col items-center 
-        p-4 pb-24 /* Extra bottom padding for scroll */
-        bg-[#0F172A] /* Fallback bg */
+        p-4 pb-24
+        bg-[#0F172A]
         pt-[max(2rem,env(safe-area-inset-top))]
         animate-fade-in
       "
@@ -109,14 +115,13 @@ export default function Dashboard() {
         {/* 1. IDENTITY HEADER */}
         <div className="w-full space-y-4">
             
-            {/* TOP ROW: LOGO + STREAK + ACTIONS */}
+            {/* TOP ROW */}
             <div className="flex items-center justify-between">
                 
                 {/* LEFT: KU + STREAK */}
                 <div className="flex items-center gap-4">
                     <h1 className="text-4xl font-bold text-white tracking-widest font-mono">KU</h1>
                     
-                    {/* THE ETERNAL EMBER */}
                     <div 
                       className={`
                         relative flex items-center justify-center w-12 h-14
@@ -147,21 +152,18 @@ export default function Dashboard() {
                 
                 {/* RIGHT: SETTINGS + LEADERBOARD + RANK */}
                 <div className="flex items-center gap-3">
-                    {/* SETTINGS BUTTON */}
                     <Link href="/settings" className="group">
                         <div className="p-2.5 rounded-full bg-white/5 border border-white/5 text-white/40 group-hover:text-white group-hover:bg-white/10 group-hover:rotate-90 transition-all duration-500">
                             <Settings size={20} />
                         </div>
                     </Link>
 
-                    {/* [NEW] LEADERBOARD BUTTON */}
                     <Link href="/leaderboard" className="group">
                         <div className="p-2.5 rounded-full bg-white/5 border border-white/5 text-amber-400/60 group-hover:text-amber-400 group-hover:bg-amber-400/10 transition-all duration-500">
                             <Trophy size={20} />
                         </div>
                     </Link>
 
-                    {/* RANK BADGE */}
                     <button 
                       onClick={() => setShowRankInfo(true)}
                       className="hover:opacity-80 transition-opacity active:scale-95"
@@ -176,7 +178,7 @@ export default function Dashboard() {
                <XpProgressBar xp={mounted ? xp : 0} />
             </div>
 
-            {/* Stats Row - CLICKABLE */}
+            {/* Stats Row */}
             <Link href="/stats" className="block w-full">
                 <div className="grid grid-cols-3 gap-2 pt-2 cursor-pointer transition-transform hover:scale-[1.02] active:scale-95 group">
                     <div className="flex flex-col items-center p-2 bg-white/5 rounded-xl border border-white/5 group-hover:bg-white/10 transition-colors">
@@ -209,27 +211,50 @@ export default function Dashboard() {
                 </div>
             </Link>
 
-            {/* SHOP BUTTON */}
-            {mounted && isShopUnlocked ? (
-              <Link href="/observatory" className="block w-full">
-                <button className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 hover:border-indigo-400/40 hover:from-indigo-500/20 hover:to-purple-500/20 transition-all group">
-                  <ShoppingBag size={16} className="text-indigo-400 group-hover:text-indigo-300" />
-                  <span className="text-xs font-bold uppercase tracking-widest text-indigo-100/80 group-hover:text-white">
-                    Visit Observatory
-                  </span>
-                </button>
-              </Link>
-            ) : (
-              <div className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 border border-white/5 opacity-50 cursor-not-allowed">
-                <Lock size={16} className="text-white/40" />
-                <span className="text-xs font-bold uppercase tracking-widest text-white/40">
-                  {mounted ? "Observatory (Requires Seeker)" : "Loading..."}
-                </span>
-              </div>
-            )}
+            {/* 2. THE META-HUB (Split: Shop vs Map) */}
+            <div className="grid grid-cols-2 gap-3 w-full pt-1">
+                
+                {/* SHOP BUTTON (Locked until Seeker) */}
+                {mounted && isShopUnlocked ? (
+                  <Link href="/observatory" className="block w-full">
+                    <button className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-900/10 border border-indigo-500/20 hover:border-indigo-400/40 hover:from-indigo-500/20 hover:to-purple-900/20 transition-all group">
+                      <Palette size={20} className="text-indigo-400 group-hover:text-indigo-300 group-hover:scale-110 transition-transform" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-100/80 group-hover:text-white">
+                        Themes
+                      </span>
+                    </button>
+                  </Link>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-50 cursor-not-allowed">
+                    <Lock size={16} className="text-white/40" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                        Themes <br/>
+                    </span>
+                  </div>
+                )}
+
+                {/* ASTRAL CHART BUTTON (Always Unlocked) */}
+                {mounted && isGalaxyUnlocked ? (
+                  <Link href="/astral" className="block w-full">
+                    <button className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-blue-900/10 border border-cyan-500/20 hover:border-cyan-400/40 hover:from-cyan-500/20 hover:to-blue-900/20 transition-all group">
+                      <Telescope size={20} className="text-cyan-400 group-hover:text-cyan-300 group-hover:scale-110 transition-transform" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-cyan-100/80 group-hover:text-white">
+                        Galaxy Map
+                      </span>
+                    </button>
+                  </Link>
+                ) : (
+                  // Fallback if we ever want to lock it again
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-50 cursor-not-allowed">
+                    <Lock size={16} className="text-white/40" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Galaxy</span>
+                  </div>
+                )}
+            </div>
+            
         </div>
 
-        {/* 2. RESUME CARD (Session Protection) */}
+        {/* 3. RESUME CARD (Session Protection) */}
         {mounted && activeGame && (
           <div className="w-full animate-slide-up space-y-2">
             <Link href="/game?resume=true" className="block relative overflow-hidden rounded-2xl border border-neon-cyan/50 bg-neon-cyan/10 p-4 transition-all hover:bg-neon-cyan/20 group cursor-pointer shadow-[0_0_20px_rgba(34,211,238,0.1)] hover:shadow-[0_0_30px_rgba(34,211,238,0.2)]">
@@ -250,7 +275,7 @@ export default function Dashboard() {
               </div>
             </Link>
             
-            {/* Divider to show separation */}
+            {/* Divider */}
             <div className="flex items-center gap-2 py-2 opacity-50">
                <div className="h-px bg-white/10 flex-1"/>
                <span className="text-[10px] text-white/40 uppercase tracking-widest">OR</span>
@@ -259,7 +284,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 3. DIFFICULTY SELECTOR */}
+        {/* 4. DIFFICULTY SELECTOR (Unchanged) */}
         <div className="w-full space-y-3">
           <p className="text-xs text-white/30 font-sans uppercase tracking-widest text-center mb-2">
             Initialize New Protocol
@@ -327,11 +352,11 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* 4. START BUTTON (With Warnings) */}
+        {/* 5. START BUTTON (With Warnings) */}
         <div className="w-full pt-2">
           <Link href={`/game?mode=${themeDifficulty}`} className="block w-full">
               <Button 
-                variant={mounted && activeGame ? "secondary" : "primary"} // Demote button if game active
+                variant={mounted && activeGame ? "secondary" : "primary"} 
                 fullWidth 
                 className={`h-12 text-lg ${mounted && activeGame ? 'border-red-500/30 text-red-400 hover:bg-red-500/10' : 'shadow-lg shadow-neon-cyan/20'}`}
               >
@@ -350,7 +375,7 @@ export default function Dashboard() {
         {/* DEV ONLY: CHEAT BUTTON */}
         {mounted && process.env.NODE_ENV === 'development' && (
           <button 
-           onClick={() => useStore.setState({ stardust: 5000, cometShards: 100 })}
+           onClick={() => useStore.setState({ stardust: 20000, cometShards: 100 })}
             className="text-[10px] text-white/20 hover:text-red-500 mt-4 uppercase tracking-widest"
           >
             [DEV] Inject Resources

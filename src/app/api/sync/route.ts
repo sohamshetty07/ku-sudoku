@@ -22,9 +22,16 @@ export async function POST(req: Request) {
     }
 
     // 2. MERGE LOGIC
+    // Ensure sub-documents exist for legacy users or new accounts
+    if (!user.progression) user.progression = {};
+    if (!user.stats) user.stats = {};
+    if (!user.settings) user.settings = {};
+    if (!user.galaxy) user.galaxy = { unlockedNodeIds: ['sun'], historyStars: [] };
+
     const p = user.progression;
     const s = user.stats;
     const set = user.settings;
+    const g = user.galaxy;
 
     // --- PROGRESSION: XP (Max Strategy) ---
     // XP only goes up, so it is safe to strictly take the higher value.
@@ -46,6 +53,34 @@ export async function POST(req: Request) {
       }
     });
 
+    // --- [NEW] GALAXY SYNC (Union Strategy) ---
+    
+    // 1. PLANETS: Merge unlocked planets so progress is never lost
+    const incomingNodes = body.unlockedNodeIds || [];
+    incomingNodes.forEach((nodeId: string) => {
+      if (!g.unlockedNodeIds.includes(nodeId)) {
+        g.unlockedNodeIds.push(nodeId);
+      }
+    });
+
+    // 2. STARS: Merge visual history stars (prevent duplicates by ID)
+    const incomingStars = body.historyStars || [];
+    // Create a Set of existing IDs for O(1) lookup to avoid duplicates
+    // Note: We cast to 'any' because Mongoose types might be strict here
+    const existingStarIds = new Set(g.historyStars.map((star: any) => star.id));
+    
+    incomingStars.forEach((star: any) => {
+      if (!existingStarIds.has(star.id)) {
+        g.historyStars.push(star);
+      }
+    });
+    
+    // Cap history stars to prevent DB bloat (e.g., keep last 1000)
+    // This keeps the sync payload light over time
+    if (g.historyStars.length > 1000) {
+        g.historyStars = g.historyStars.slice(g.historyStars.length - 1000);
+    }
+
     // --- CUMULATIVE STATS (Max Strategy) ---
     // These metrics generally only increment.
     if ((body.gamesPlayed || 0) > s.gamesPlayed) s.gamesPlayed = body.gamesPlayed;
@@ -61,12 +96,15 @@ export async function POST(req: Request) {
     }
 
     // --- BEST TIMES (Min Strategy with Null Checks) ---
-    const updateBestTime = (field: 'bestTimeRelaxed' | 'bestTimeStandard' | 'bestTimeMastery', incoming: number | null | undefined) => {
+    // Use 'any' for key indexing to satisfy TS strict mode if needed, or define specific type
+    const updateBestTime = (field: string, incoming: number | null | undefined) => {
         if (!incoming) return; 
         
+        // @ts-ignore: Dynamic access to Mongoose subdocument
         const current = s[field];
         // Update if DB is empty (null) OR incoming is faster (lower)
         if (current === null || incoming < current) {
+            // @ts-ignore
             s[field] = incoming;
         }
     };

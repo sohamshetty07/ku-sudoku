@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
+import { useGalaxyStore } from "@/lib/store/galaxy"; // <--- 1. IMPORT GALAXY STORE
 import Button from "@/components/ui/Button";
 import { 
   ArrowLeft, Volume2, VolumeX, ShieldAlert, 
@@ -26,6 +27,9 @@ export default function SettingsPage() {
     resetProgress 
   } = useStore();
 
+  // 2. GET GALAXY RESET ACTION
+  const { resetGalaxy } = useGalaxyStore();
+
   const [isResetting, setIsResetting] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
@@ -42,7 +46,10 @@ export default function SettingsPage() {
     
     setIsResetting(true);
     try {
-        await resetProgress(); 
+        // 3. WIPE BOTH STORES
+        resetGalaxy(); // Clears Planets & Stars
+        await resetProgress(); // Clears XP, Currency, Themes
+        
         // Force hard reload to clear any lingering client state/cache
         window.location.href = "/"; 
     } catch (error) {
@@ -66,7 +73,7 @@ export default function SettingsPage() {
                 </div>
                 
                 <p className="text-white/70 text-sm mb-6 leading-relaxed">
-                    This will permanently delete your <span className="text-white font-bold">XP, ELO, Currency, and Themes</span>. 
+                    This will permanently delete your <span className="text-white font-bold">XP, ELO, Currency, Themes, and Galaxy Progress</span>. 
                     This action cannot be undone.
                 </p>
 

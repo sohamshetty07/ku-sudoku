@@ -2,17 +2,26 @@
 import React, { useMemo, useState, useEffect } from "react";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
-import { Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles } from "lucide-react";
+import { Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles, Globe } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { RewardSummary } from "@/lib/progression/rewards"; // Import the type
+
+// Define the type locally if not available in a separate file yet
+export type RewardSummary = {
+  xp: number;
+  stardust: number;
+  cometShards: number;
+  eloChange: number;
+  bonuses: string[]; // e.g., ["Mercury Bonus", "Flawless"]
+};
 
 type VictoryModalProps = {
   timeElapsed: number;
   mistakes: number;
   onRetry: () => void;
   cellTimes?: Record<string, number>; 
-  finalBoard?: number[][];
-  rewards?: RewardSummary | null; // <--- The new Rewards Data
+  rewards?: RewardSummary | null; 
+  // [FIX] Added this back to resolve the error
+  finalBoard?: number[][]; 
 };
 
 const formatTime = (seconds: number) => {
@@ -27,42 +36,53 @@ export default function VictoryModal({
   onRetry,
   cellTimes = {}, 
   rewards,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  finalBoard, // Kept here so it can be accepted as a prop, even if unused visually yet
 }: VictoryModalProps) {
   
   const [showHeatmap, setShowHeatmap] = useState(false);
-  const { elo } = useStore(); // Current global Elo (already updated)
   
-  // Rolling Counters
+  // Rolling Counters State
   const [displayedXp, setDisplayedXp] = useState(0);
   const [displayedStardust, setDisplayedStardust] = useState(0);
 
-  // Animation Effect
+  // Animation Effect for Counters
   useEffect(() => {
     if (!rewards) return;
 
+    // Reset counters when rewards change
+    setDisplayedXp(0);
+    setDisplayedStardust(0);
+
     // 1. Animate XP
-    const xpStep = Math.ceil(rewards.xp / 20);
+    const xpTarget = rewards.xp;
+    const xpStep = Math.max(1, Math.ceil(xpTarget / 25)); // 25 frames
+    
     const xpInterval = setInterval(() => {
       setDisplayedXp(prev => {
-        if (prev + xpStep >= rewards.xp) {
+        const next = prev + xpStep;
+        if (next >= xpTarget) {
             clearInterval(xpInterval);
-            return rewards.xp;
+            return xpTarget;
         }
-        return prev + xpStep;
+        return next;
       });
-    }, 30);
+    }, 20);
 
     // 2. Animate Stardust
-    const dustStep = Math.max(1, Math.ceil(rewards.stardust / 20));
+    const dustTarget = rewards.stardust;
+    const dustStep = Math.max(1, Math.ceil(dustTarget / 25));
+
     const dustInterval = setInterval(() => {
       setDisplayedStardust(prev => {
-        if (prev + dustStep >= rewards.stardust) {
+        const next = prev + dustStep;
+        if (next >= dustTarget) {
             clearInterval(dustInterval);
-            return rewards.stardust;
+            return dustTarget;
         }
-        return prev + dustStep;
+        return next;
       });
-    }, 40);
+    }, 20);
 
     return () => {
       clearInterval(xpInterval);
@@ -82,124 +102,142 @@ export default function VictoryModal({
     const intensity = time / maxTime; 
 
     if (intensity === 0) return "rgba(255, 255, 255, 0.05)"; 
-    if (intensity < 0.2) return `rgba(6, 182, 212, ${0.1 + intensity})`; 
-    if (intensity < 0.5) return `rgba(168, 85, 247, ${intensity})`; 
-    return `rgba(239, 68, 68, ${intensity})`; 
+    if (intensity < 0.2) return `rgba(6, 182, 212, ${0.1 + intensity})`; // Cyan (Fast)
+    if (intensity < 0.5) return `rgba(168, 85, 247, ${intensity})`; // Purple (Medium)
+    return `rgba(239, 68, 68, ${intensity})`; // Red (Slow/Stuck)
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-midnight/80 backdrop-blur-sm transition-all duration-500 animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-midnight/80 backdrop-blur-md transition-all duration-500 animate-in fade-in">
       
-      <div className="w-[90%] max-w-sm transform rounded-2xl border border-neon-cyan/30 bg-midnight/90 p-6 text-center shadow-[0_0_50px_rgba(6,182,212,0.4)] backdrop-blur-2xl">
+      <div className="w-[90%] max-w-sm transform rounded-3xl border border-neon-cyan/30 bg-[#0F172A]/95 p-6 text-center shadow-[0_0_50px_rgba(6,182,212,0.2)] backdrop-blur-xl">
         
         {/* VIEW TOGGLE */}
         <div className="flex justify-end mb-2">
            <button 
              onClick={() => setShowHeatmap(!showHeatmap)}
-             className="text-xs text-neon-cyan/60 hover:text-neon-cyan uppercase tracking-wider flex items-center gap-1 transition-colors"
+             className="text-[10px] uppercase tracking-widest font-bold text-slate-500 hover:text-neon-cyan flex items-center gap-1 transition-colors"
            >
              <Activity size={12} />
-             {showHeatmap ? "View Stats" : "View Heatmap"}
+             {showHeatmap ? "VIEW REWARDS" : "ANALYZE FOCUS"}
            </button>
         </div>
 
         {!showHeatmap ? (
-          /* --- STATE 1: REWARDS --- */
-          <>
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-neon-cyan/10 ring-1 ring-neon-cyan/50 shadow-[0_0_20px_rgba(6,182,212,0.3)]">
-              <Trophy size={40} className="text-neon-cyan" />
+          /* --- STATE 1: REWARDS VIEW --- */
+          <div className="animate-in slide-in-from-bottom-4 fade-in duration-500">
+            
+            {/* ICON */}
+            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-b from-neon-cyan/20 to-transparent ring-1 ring-neon-cyan/50 shadow-[0_0_30px_rgba(6,182,212,0.4)]">
+              <Trophy size={36} className="text-neon-cyan drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
             </div>
 
-            <h2 className="mb-1 text-2xl font-bold text-white tracking-wide">VICTORY</h2>
-            <p className="text-white/40 text-sm mb-6 font-mono">The Void accepts your logic.</p>
+            <h2 className="mb-1 text-3xl font-bold text-white tracking-wide font-mono">VICTORY</h2>
+            <p className="text-slate-400 text-xs mb-8 font-mono tracking-widest uppercase">Logic Stabilized</p>
             
             {/* REWARDS GRID */}
             {rewards && (
-              <div className="space-y-4 mb-6">
+              <div className="space-y-3 mb-8">
                 
-                {/* PRIMARY STATS (ELO & XP) */}
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white/5 rounded-xl p-3 border border-white/10 flex flex-col items-center">
-                        <span className="text-[10px] text-white/40 uppercase tracking-widest mb-1">Skill</span>
-                        <div className="flex items-center gap-1">
+                    {/* ELO CARD */}
+                    <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5 flex flex-col items-center justify-center">
+                        <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1">Rating</span>
+                        <div className="flex items-center gap-2">
                             <span className="text-xl font-mono font-bold text-white">
                                 {rewards.eloChange >= 0 ? "+" : ""}{rewards.eloChange}
                             </span>
-                            <span className="text-xs text-white/60">ELO</span>
+                            <ArrowUp size={14} className="text-emerald-400" />
                         </div>
                     </div>
-                    <div className="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20 flex flex-col items-center">
-                        <span className="text-[10px] text-purple-300/60 uppercase tracking-widest mb-1">Experience</span>
-                        <div className="flex items-center gap-1">
-                            <span className="text-xl font-mono font-bold text-purple-400">
+
+                    {/* XP CARD */}
+                    <div className="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20 flex flex-col items-center justify-center relative overflow-hidden">
+                        <div className="absolute inset-0 bg-purple-500/5 blur-xl"></div>
+                        <span className="text-[9px] text-purple-300/60 uppercase tracking-widest font-bold mb-1">XP Gained</span>
+                        <div className="flex items-center gap-1 relative z-10">
+                            <span className="text-xl font-mono font-bold text-purple-300">
                                 +{displayedXp}
                             </span>
-                            <span className="text-xs text-purple-400/60">XP</span>
                         </div>
                     </div>
                 </div>
 
-                {/* CURRENCY BOX */}
-                <div className="bg-amber-500/5 rounded-xl p-3 border border-amber-500/10 flex items-center justify-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <Star size={16} className="text-amber-400 fill-amber-400" />
-                        <span className="text-xl font-mono font-bold text-amber-100">+{displayedStardust}</span>
+                {/* CURRENCY CARD (Full Width) */}
+                <div className="bg-amber-500/5 rounded-xl p-4 border border-amber-500/10 flex items-center justify-center gap-8 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-amber-500/50 to-transparent opacity-50"></div>
+                    
+                    <div className="flex items-center gap-3">
+                        <Star size={18} className="text-amber-400 fill-amber-400 animate-pulse-slow" />
+                        <div className="flex flex-col items-start leading-none">
+                            <span className="text-2xl font-mono font-bold text-amber-100">+{displayedStardust}</span>
+                            <span className="text-[9px] text-amber-500/60 font-bold uppercase tracking-widest">Stardust</span>
+                        </div>
                     </div>
+
                     {rewards.cometShards > 0 && (
-                         <div className="flex items-center gap-2">
-                            <Sparkles size={16} className="text-rose-500 fill-rose-500" />
-                            <span className="text-xl font-mono font-bold text-rose-100">+{rewards.cometShards}</span>
+                         <div className="flex items-center gap-3 border-l border-white/5 pl-8">
+                            <Sparkles size={18} className="text-rose-500 fill-rose-500 animate-pulse" />
+                            <div className="flex flex-col items-start leading-none">
+                                <span className="text-2xl font-mono font-bold text-rose-100">+{rewards.cometShards}</span>
+                                <span className="text-[9px] text-rose-500/60 font-bold uppercase tracking-widest">Shards</span>
+                            </div>
                         </div>
                     )}
                 </div>
 
-                {/* BONUSES PILLS */}
+                {/* BONUSES PILLS (Planetary Perks) */}
                 {rewards.bonuses.length > 0 && (
-                    <div className="flex flex-wrap gap-2 justify-center">
+                    <div className="flex flex-wrap gap-2 justify-center pt-2">
                         {rewards.bonuses.map((bonus, i) => (
-                            <span key={i} className="text-[10px] bg-neon-cyan/5 text-neon-cyan px-2 py-1 rounded-full border border-neon-cyan/10">
+                            <div key={i} className="flex items-center gap-1.5 text-[10px] font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded-full border border-white/5 shadow-sm">
+                                {bonus.includes("Mercury") || bonus.includes("Earth") ? <Globe size={10} className="text-cyan-400" /> : <Sparkles size={10} className="text-amber-400" />}
                                 {bonus}
-                            </span>
+                            </div>
                         ))}
                     </div>
                 )}
               </div>
             )}
             
-            {/* MINI STATS - Updated styles here */}
-            <div className="flex justify-center gap-6 text-white font-mono mb-6 font-bold text-lg">
+            {/* STATS FOOTER */}
+            <div className="flex justify-center gap-8 text-slate-400 font-mono mb-6 text-sm border-t border-white/5 pt-4">
                 <span className="flex items-center gap-2">
-                    <Clock size={16} className="text-white/80" /> {formatTime(timeElapsed)}
+                    <Clock size={14} className="text-slate-600" /> {formatTime(timeElapsed)}
                 </span>
                 <span className="flex items-center gap-2">
-                    <Zap size={16} className="text-white/80" /> {mistakes} Mistakes
+                    <Zap size={14} className="text-slate-600" /> {mistakes} Misses
                 </span>
             </div>
-          </>
+          </div>
         ) : (
-          /* --- STATE 2: HEATMAP --- */
+          /* --- STATE 2: HEATMAP VIEW --- */
           <div className="mb-8 animate-in zoom-in duration-300">
-            <h3 className="text-white mb-4 font-bold">Focus Heatmap</h3>
-            <p className="text-xs text-white/50 mb-4">Red zones indicate hesitation.</p>
+            <h3 className="text-white mb-1 font-bold text-lg">Neural Heatmap</h3>
+            <p className="text-[10px] text-slate-500 mb-6 uppercase tracking-widest">Red zones indicate hesitation</p>
             
-            <div className="grid grid-cols-9 gap-[2px] border-2 border-white/10 p-1 bg-black/20 rounded-lg aspect-square">
-              {Array.from({ length: 9 }).map((_, r) => (
-                Array.from({ length: 9 }).map((_, c) => (
-                  <div 
-                    key={`${r}-${c}`}
-                    className="w-full h-full rounded-[1px] transition-all duration-500"
-                    style={{ backgroundColor: getHeatColor(r, c) }}
-                  />
-                ))
-              ))}
+            <div className="relative mx-auto w-full max-w-[260px]">
+                <div className="grid grid-cols-9 gap-[1px] border border-white/10 p-1 bg-black/40 rounded-lg aspect-square shadow-inner">
+                {Array.from({ length: 9 }).map((_, r) => (
+                    Array.from({ length: 9 }).map((_, c) => (
+                    <div 
+                        key={`${r}-${c}`}
+                        className="w-full h-full rounded-[2px] transition-all duration-500 hover:scale-110 hover:z-10 hover:ring-1 ring-white/50"
+                        style={{ backgroundColor: getHeatColor(r, c) }}
+                        title={`Cell ${r+1},${c+1}`}
+                    />
+                    ))
+                ))}
+                </div>
             </div>
           </div>
         )}
         
+        {/* ACTIONS */}
         <div className="space-y-3">
-          <Button variant="primary" fullWidth onClick={onRetry}>New Game</Button>
+          <Button variant="primary" fullWidth onClick={onRetry} className="h-12 text-sm font-bold tracking-wider">INITIATE NEW SEQUENCE</Button>
           <Link href="/" className="block w-full">
-            <Button variant="secondary" fullWidth>Return to Void</Button>
+            <Button variant="secondary" fullWidth className="h-12 text-xs text-slate-500 hover:text-white border-transparent bg-transparent">Return to Void</Button>
           </Link>
         </div>
 
