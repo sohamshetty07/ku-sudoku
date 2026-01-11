@@ -3,7 +3,6 @@ import withPWA from "@ducanh2912/next-pwa";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // This helps prevent hydration mismatches which can sometimes look like SW errors
   compiler: {
     removeConsole: process.env.NODE_ENV === "production",
   },
@@ -11,12 +10,11 @@ const nextConfig: NextConfig = {
 
 export default withPWA({
   dest: "public",
-  // DISABLE THESE for now. They are aggressive and can cause the "no-response" error
-  // if the cache isn't perfectly primed.
-  cacheOnFrontEndNav: false,
-  aggressiveFrontEndNavCaching: false,
+  // Core PWA Settings
+  cacheOnFrontEndNav: true, // [CHANGED] Enable this for smoother transitions offline
+  aggressiveFrontEndNavCaching: true, // [CHANGED] Pre-cache nearby pages
   
-  reloadOnOnline: true,
+  reloadOnOnline: false, // [CHANGED] Don't force reload when wifi comes back (interrupts gameplay)
   disable: process.env.NODE_ENV === "development",
   
   workboxOptions: {
@@ -25,9 +23,8 @@ export default withPWA({
     // EXTENDED RULESET
     runtimeCaching: [
       {
-        // RULE 1: JS, CSS, IMAGES (The "App Shell" Assets)
-        // Strategy: CacheFirst
-        // These file names have hashes (e.g. main-x82z.js), so they never change.
+        // RULE 1: ASSETS (JS, CSS, IMAGES, FONTS)
+        // Strategy: CacheFirst (Serve from cache immediately)
         urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico|css|js|woff2?|json)$/i,
         handler: "CacheFirst",
         options: {
@@ -39,14 +36,18 @@ export default withPWA({
         },
       },
       {
-        // RULE 2: PAGES (HTML) - Dashboard, Game, Home
-        // Strategy: NetworkFirst (The "Safe" Offline Mode)
-        // Try to fetch from internet. If offline, use the cached version.
+        // RULE 2: APP PAGES (HTML)
+        // Strategy: NetworkFirst (Try internet -> Fallback to Cache)
         urlPattern: ({ url }) => {
+          const pathname = url.pathname;
           return (
-            url.pathname === "/" ||
-            url.pathname.startsWith("/game") || 
-            url.pathname.startsWith("/dashboard")
+            pathname === "/" ||
+            pathname.startsWith("/game") || 
+            pathname.startsWith("/dashboard") ||
+            pathname.startsWith("/observatory") || // Shop
+            pathname.startsWith("/leaderboard") || // Apex
+            pathname.startsWith("/stats") ||       // Archives
+            pathname.startsWith("/settings")       // Config
           );
         },
         handler: "NetworkFirst",
@@ -56,11 +57,13 @@ export default withPWA({
             maxEntries: 50,
             maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
           },
-          networkTimeoutSeconds: 5, // Wait 5s for internet, then use cache
+          // [OPTIMIZATION] Wait only 3s for internet. 
+          // If slow, show cached game immediately so user can play.
+          networkTimeoutSeconds: 3, 
         },
       },
       {
-        // RULE 3: NEXT.JS DATA (JSON data for page transitions)
+        // RULE 3: NEXT.JS DATA (JSON)
         // Strategy: NetworkFirst
         urlPattern: /\/_next\/data\/.+\/.+\.json$/i,
         handler: "NetworkFirst",
@@ -73,24 +76,30 @@ export default withPWA({
         },
       },
       {
-        // RULE 4: API CALLS
+        // RULE 4: API CALLS (Leaderboard, Sync)
+        // Strategy: NetworkFirst 
+        // (Allows viewing old Leaderboard data if offline)
         urlPattern: /\/api\/.*/i,
         handler: "NetworkFirst",
         options: {
           cacheName: "apis",
           expiration: {
             maxEntries: 32,
-            maxAgeSeconds: 60 * 60 * 24,
+            maxAgeSeconds: 60 * 60 * 24, // 24 Hours
           },
+          networkTimeoutSeconds: 5,
         },
       },
       {
-        // RULE 5: EVERYTHING ELSE
-        urlPattern: ({ url }) => !url.pathname.startsWith('/api'), 
-        handler: "NetworkFirst",
+        // RULE 5: EXTERNAL FONTS (Google Fonts)
+        urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
+        handler: "CacheFirst",
         options: {
-          cacheName: "others",
-          expiration: { maxEntries: 200 },
+          cacheName: "google-fonts",
+          expiration: {
+            maxEntries: 30,
+            maxAgeSeconds: 60 * 60 * 24 * 365, // 1 Year
+          },
         },
       },
     ],
