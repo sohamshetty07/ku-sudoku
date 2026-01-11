@@ -14,8 +14,8 @@ const getContext = () => {
   return audioCtx;
 };
 
-// [UPDATED] Added 'heavy-impact' and 'success' to types
-type SoundType = 'click' | 'input' | 'error' | 'erase' | 'gameover' | 'victory' | 'heavy-impact' | 'success';
+// [UPDATED] Added 'chord' to types
+type SoundType = 'click' | 'input' | 'error' | 'erase' | 'gameover' | 'victory' | 'heavy-impact' | 'success' | 'chord';
 
 export const playSfx = (type: SoundType) => {
   // 1. Check if Audio is Enabled in Store
@@ -131,6 +131,30 @@ export const playSfx = (type: SoundType) => {
         
         osc.start(now + (i * 0.1));
         osc.stop(now + (i * 0.1) + 2.0);
+      });
+      break;
+    }
+
+    // [NEW] Chord for Row/Col Completion
+    case 'chord': {
+      // Major triad swell (C4, E4, G4)
+      const notes = [261.63, 329.63, 392.00]; 
+      notes.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine'; // Sine for a smooth, pure tone
+        osc.frequency.setValueAtTime(freq, now);
+        
+        // Quick swell and fade (gentler than 'input', faster than 'victory')
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.05, now + 0.05); // Fast attack
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6); // Short decay
+        
+        osc.start(now);
+        osc.stop(now + 0.6);
       });
       break;
     }

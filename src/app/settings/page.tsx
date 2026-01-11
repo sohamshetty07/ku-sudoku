@@ -2,11 +2,13 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
-import { useGalaxyStore } from "@/lib/store/galaxy"; // <--- 1. IMPORT GALAXY STORE
+import { useGalaxyStore } from "@/lib/store/galaxy"; 
 import Button from "@/components/ui/Button";
 import { 
   ArrowLeft, Volume2, VolumeX, ShieldAlert, 
-  Eye, EyeOff, Eraser, Trash2, LogOut, AlertTriangle 
+  Eye, EyeOff, Eraser, Trash2, LogOut, AlertTriangle,
+  // [NEW] Icons for new settings
+  Type, MousePointerClick, Sparkles
 } from "lucide-react";
 import { signOut } from "next-auth/react";
 
@@ -22,9 +24,18 @@ export default function SettingsPage() {
     autoEraseNotes, 
     toggleAutoErase,
     
+    // [NEW] Visual & Input Settings
+    inputMode,
+    toggleInputMode,
+    textSize,
+    toggleTextSize,
+    highlightCompletions,
+    toggleHighlightCompletions,
+    
     // Actions
     clearGame,
-    resetProgress 
+    resetProgress,
+    logout // [NEW] Import logout action to clear local state
   } = useStore();
 
   // 2. GET GALAXY RESET ACTION
@@ -58,6 +69,14 @@ export default function SettingsPage() {
         setIsResetting(false);
         setShowDeleteModal(false);
     }
+  };
+
+  // [NEW] Handle Secure Sign Out (Fixes persistence bug)
+  const handleSignOut = () => {
+      // 1. Wipe Local Data
+      logout();
+      // 2. Sign Out of NextAuth (Clears Session Cookie)
+      signOut({ callbackUrl: '/' });
   };
 
   return (
@@ -142,6 +161,19 @@ export default function SettingsPage() {
                 activeColor="text-neon-cyan shadow-[0_0_15px_rgba(34,211,238,0.3)]"
                 knobColor="bg-cyan-400"
             />
+            
+            <div className="w-full h-px bg-white/5" />
+
+            {/* [NEW] Completion Highlights Toggle */}
+            <ToggleRow 
+                icon={<Sparkles size={24} />}
+                title="Completion Effects"
+                subtitle="Visual/Audio feedback for rows & boxes"
+                isActive={mounted && highlightCompletions}
+                onToggle={toggleHighlightCompletions}
+                activeColor="text-fuchsia-400 shadow-[0_0_15px_rgba(232,121,249,0.3)]"
+                knobColor="bg-fuchsia-400"
+            />
         </section>
 
         {/* SECTION 2: NEURAL INTERFACE */}
@@ -150,6 +182,32 @@ export default function SettingsPage() {
                 Neural Interface
             </h2>
             
+            {/* [NEW] Digit-First Input Toggle */}
+            <ToggleRow 
+                icon={<MousePointerClick size={24} />}
+                title="Digit-First Input"
+                subtitle="Select number first, then fill cells"
+                isActive={mounted && inputMode === 'digit-first'}
+                onToggle={toggleInputMode}
+                activeColor="text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]"
+                knobColor="bg-emerald-400"
+            />
+
+            <div className="w-full h-px bg-white/5" />
+
+            {/* [NEW] Large Text Toggle */}
+            <ToggleRow 
+                icon={<Type size={24} />}
+                title="Large Text Mode"
+                subtitle="Enhanced visibility for grid numbers"
+                isActive={mounted && textSize === 'large'}
+                onToggle={toggleTextSize}
+                activeColor="text-orange-400 shadow-[0_0_15px_rgba(251,146,60,0.3)]"
+                knobColor="bg-orange-400"
+            />
+
+            <div className="w-full h-px bg-white/5" />
+
             <ToggleRow 
                 icon={timerVisible ? <Eye size={24} /> : <EyeOff size={24} />}
                 title="Visible Timer"
@@ -190,7 +248,7 @@ export default function SettingsPage() {
                     </div>
                 </div>
                 <button 
-                    onClick={() => signOut({ callbackUrl: '/' })}
+                    onClick={handleSignOut}
                     className="px-6 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 font-bold text-sm transition-all active:scale-95"
                 >
                     Sign Out

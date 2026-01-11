@@ -6,13 +6,18 @@ import { Delete } from "lucide-react";
 type NumberPadProps = {
   onNumberClick: (num: number) => void;
   onDelete: () => void;
-  completedNumbers?: number[]; // <--- New Prop
+  completedNumbers?: number[]; 
+  // [NEW] Props for Digit-First Mode
+  activeNumber?: number | null;
+  inputMode?: 'cell-first' | 'digit-first';
 };
 
 export default function NumberPad({ 
   onNumberClick, 
   onDelete, 
-  completedNumbers = [] 
+  completedNumbers = [],
+  activeNumber,
+  inputMode
 }: NumberPadProps) {
   
   const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -23,19 +28,24 @@ export default function NumberPad({
       {numbers.map((num) => {
         // Check if this number is "done" (appears 9 times on board)
         const isHidden = completedNumbers.includes(num);
+        
+        // [NEW] Check if this number is currently "loaded" in Digit-First mode
+        const isActive = inputMode === 'digit-first' && activeNumber === num;
 
         return (
           <div key={num} className={isHidden ? "invisible pointer-events-none" : ""}>
             <button
               onClick={() => onNumberClick(num)}
-              className="
+              className={`
                 flex h-14 w-full items-center justify-center rounded-xl 
-                bg-glass border border-glass-border 
-                text-2xl font-mono text-neon-cyan font-bold
-                shadow-lg backdrop-blur-md transition-all
-                active:scale-95 active:bg-neon-cyan/20
-                hover:bg-white/5
-              "
+                text-2xl font-mono font-bold
+                shadow-lg backdrop-blur-md transition-all duration-200
+                
+                ${isActive 
+                  ? "bg-neon-cyan text-midnight scale-110 border-2 border-white shadow-[0_0_20px_rgba(6,182,212,0.6)] z-10" 
+                  : "bg-glass border border-glass-border text-neon-cyan active:scale-95 active:bg-neon-cyan/20 hover:bg-white/5"
+                }
+              `}
             >
               {num}
             </button>

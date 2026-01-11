@@ -1,8 +1,8 @@
 "use client";
 import React from "react";
 import { motion } from "framer-motion";
-import { useStore } from "@/lib/store"; // <--- 1. Import Store
-import { getThemeById } from "@/lib/store/theme"; // <--- 2. Import Theme Helper
+import { useStore } from "@/lib/store"; 
+import { getThemeById } from "@/lib/store/theme"; 
 
 interface SudokuGridProps {
   initialBoard: number[][] | null;
@@ -11,6 +11,9 @@ interface SudokuGridProps {
   onCellClick: (row: number, col: number) => void;
   errorCells: Set<string>;
   notes: Record<string, number[]>;
+  // [UPDATED] Use transientRegions to handle the one-time flash logic
+  transientRegions?: Set<string>; 
+  activeNumber?: number | null;
 }
 
 export default function SudokuGrid({
@@ -20,25 +23,24 @@ export default function SudokuGrid({
   onCellClick,
   errorCells,
   notes,
+  transientRegions, // [UPDATED]
+  activeNumber
 }: SudokuGridProps) {
-  // 3. Get Active Theme
-  const { activeThemeId } = useStore();
+  // Get Active Theme & Text Settings
+  const { activeThemeId, textSize } = useStore();
   const theme = getThemeById(activeThemeId);
 
   if (!boardState || !initialBoard) return null;
 
-  const selectedValue =
+  // Determine which number to highlight
+  // Priority: Active Number (Digit-First) -> Selected Cell's Value (Standard) -> Null
+  const highlightValue = activeNumber ?? (
     selectedCell && boardState[selectedCell.row][selectedCell.col] !== 0
       ? boardState[selectedCell.row][selectedCell.col]
-      : null;
+      : null
+  );
 
   return (
-    // CONTAINER
-    // Safari Fixes Added:
-    // 1. 'isolate': Creates a new stacking context to fix border-radius clipping.
-    // 2. 'transform-gpu': Forces hardware acceleration for smoother rendering.
-    // 3. 'z-0': Ensures correct layering context.
-    // 4. Inline styles: Specific Webkit hacks for iOS Safari.
     <div 
       className="grid grid-cols-9 grid-rows-9 w-full max-w-lg aspect-square bg-white/5 border-2 border-white/20 rounded-xl overflow-hidden shadow-2xl select-none mx-auto isolate transform-gpu z-0"
       style={{ WebkitBackfaceVisibility: "hidden", WebkitTransform: "translate3d(0, 0, 0)" }}
@@ -50,40 +52,63 @@ export default function SudokuGrid({
           const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
           const isError = errorCells.has(`${rowIndex}-${colIndex}`);
           
+          // Related highlighting now uses the calculated highlightValue
+          const isSameValue = highlightValue !== null && cellValue === highlightValue && !isSelected;
+
           const isRelated = selectedCell 
             ? (selectedCell.row === rowIndex || selectedCell.col === colIndex) && !isSelected
             : false;
 
-          const isSameValue = selectedValue !== null && cellValue === selectedValue && !isSelected;
+          // [UPDATED] Check Transient Completion (Flash) Status
+          // We check if this cell belongs to a region that JUST completed
+          let isFlashing = false;
+          if (transientRegions) {
+             const rKey = `row-${rowIndex}`;
+             const cKey = `col-${colIndex}`;
+             const bKey = `box-${Math.floor(rowIndex/3)}-${Math.floor(colIndex/3)}`;
+             if (transientRegions.has(rKey) || transientRegions.has(cKey) || transientRegions.has(bKey)) {
+                isFlashing = true;
+             }
+          }
 
-          // --- BORDER LOGIC (STABILITY FIX) ---
+          // --- BORDER LOGIC ---
           const isRightEdge = colIndex === 8;
           const isBottomEdge = rowIndex === 8;
           const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
           const isThickBottom = (rowIndex + 1) % 3 === 0 && !isBottomEdge;
 
-          // FIX: ALL borders are now 1px wide ('border-r', 'border-b').
-          // We use Opacity (white/50 vs white/10) to create the visual hierarchy.
-          // This eliminates sub-pixel jitter on all browsers.
           const borderClasses = `
             ${!isRightEdge ? (isThickRight ? "border-r border-r-white/50" : "border-r border-r-white/10") : ""}
             ${!isBottomEdge ? (isThickBottom ? "border-b border-b-white/50" : "border-b border-b-white/10") : ""}
           `;
 
-          // --- TEXT COLOR PRIORITY LOGIC ---
+          // --- TEXT COLOR PRIORITY ---
           let textColorClass = "";
-          
           if (isError) {
             textColorClass = "text-neon-red font-bold";
           } else if (isSameValue && !isSelected) {
-            textColorClass = "text-amber-400 font-bold";
+            textColorClass = "text-amber-400 font-bold"; 
           } else if (isFixed) {
             textColorClass = "text-white/90 font-bold";
           } else {
-            // DYNAMIC THEME COLOR APPLIED HERE
-            // Was: "text-neon-cyan font-semibold"
             textColorClass = `${theme.numColor} font-semibold`; 
           }
+
+          // Big Text / Standard Text Logic
+          const fontSizeClass = textSize === 'large' 
+            ? "text-3xl sm:text-4xl md:text-5xl p-0" 
+            : "text-xl sm:text-2xl md:text-3xl";
+
+          // Dynamic Note Sizing
+          const cellNotes = notes[`${rowIndex}-${colIndex}`] || [];
+          const noteCount = cellNotes.length;
+          const useLargeNotes = noteCount > 0 && noteCount <= 4;
+          const noteGridClass = useLargeNotes 
+            ? "grid-cols-2 place-content-center" 
+            : "grid-cols-3";
+          const noteTextClass = useLargeNotes
+            ? "text-[10px] sm:text-[12px] font-bold text-white/90"
+            : "text-[6px] sm:text-[8px] text-white/60";
 
           return (
             <div
@@ -92,18 +117,25 @@ export default function SudokuGrid({
               className={`
                 relative flex items-center justify-center 
                 w-full h-full
-                text-xl sm:text-2xl md:text-3xl font-mono cursor-pointer transition-colors duration-75
+                font-mono cursor-pointer transition-colors duration-200
                 
                 ${borderClasses}
+                ${fontSizeClass}
                 
                 ${/* BACKGROUND STATES */ ""}
                 ${isSelected ? "bg-white/10 z-10" : ""}
+                ${/* Highlight Value Match */ ""}
                 ${!isSelected && isSameValue ? "bg-amber-500/20 shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
                 ${isError && !isSelected ? "bg-neon-red/10" : ""}
+                ${/* Related Row/Col Highlight */ ""}
                 ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
-                ${!isSelected && !isRelated && !isSameValue ? "hover:bg-white/5" : ""}
                 
-                ${/* TEXT COLOR APPLIED HERE */ ""}
+                ${/* [UPDATED] Completion Glow using Animation */ ""}
+                ${!isSelected && !isSameValue && !isRelated && isFlashing ? "animate-flash-fade" : ""}
+                
+                ${/* Hover State */ ""}
+                ${!isSelected && !isRelated && !isSameValue && !isFlashing ? "hover:bg-white/5" : ""}
+                
                 ${textColorClass}
               `}
             >
@@ -111,7 +143,6 @@ export default function SudokuGrid({
                 <motion.div 
                   layoutId="selection-ring" 
                   className="absolute inset-0 border-2 z-20 pointer-events-none" 
-                  // DYNAMIC ACCENT COLOR
                   style={{ borderColor: theme.accentHex }}
                   transition={{ duration: 0.15 }} 
                 />
@@ -120,16 +151,22 @@ export default function SudokuGrid({
               {cellValue !== 0 ? (
                 cellValue
               ) : (
-                <div className="grid grid-cols-3 w-full h-full p-[1px] pointer-events-none">
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                    <div key={n} className="flex items-center justify-center">
-                      {notes[`${rowIndex}-${colIndex}`]?.includes(n) && (
-                        <span className="text-[6px] sm:text-[8px] leading-none text-white/60 font-sans">
-                          {n}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                // Dynamic Notes Renderer
+                <div className={`grid w-full h-full p-[1px] pointer-events-none ${noteGridClass}`}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+                    const hasNote = cellNotes.includes(n);
+                    if (!hasNote && useLargeNotes) return null; 
+                    
+                    return (
+                      <div key={n} className="flex items-center justify-center">
+                        {hasNote && (
+                          <span className={`leading-none font-sans ${noteTextClass}`}>
+                            {n}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

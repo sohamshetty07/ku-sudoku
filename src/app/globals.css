@@ -17,6 +17,25 @@
   /* 3. Define Glass Colors */
   --color-glass: rgba(255, 255, 255, 0.1);
   --color-glass-border: rgba(255, 255, 255, 0.2);
+
+  /* 4. [NEW] Define Animations */
+  /* This creates a class 'animate-flash-fade' */
+  --animate-flash-fade: flash-fade 1.5s ease-out forwards;
+
+  @keyframes flash-fade {
+    0% {
+      background-color: rgba(6, 182, 212, 0.15); /* Neon Cyan Low Opacity */
+      box-shadow: inset 0 0 15px rgba(6, 182, 212, 0.2);
+    }
+    50% {
+      background-color: rgba(6, 182, 212, 0.05);
+      box-shadow: inset 0 0 5px rgba(6, 182, 212, 0.1);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: none;
+    }
+  }
 }
 
 /* Global Page Setup */

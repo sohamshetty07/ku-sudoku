@@ -236,7 +236,7 @@ export default function VictoryModal({
         {/* ACTIONS */}
         <div className="space-y-3">
           <Button variant="primary" fullWidth onClick={onRetry} className="h-12 text-sm font-bold tracking-wider">INITIATE NEW SEQUENCE</Button>
-          <Link href="/" className="block w-full">
+          <Link href="/dashboard" className="block w-full">
             <Button variant="secondary" fullWidth className="h-12 text-xs text-slate-500 hover:text-white border-transparent bg-transparent">Return to Void</Button>
           </Link>
         </div>

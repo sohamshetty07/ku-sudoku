@@ -73,16 +73,27 @@ interface UserStore {
   audioEnabled: boolean;
   timerVisible: boolean;      
   autoEraseNotes: boolean;    
-  
+  // [NEW] Visual & Input Settings
+  inputMode: 'cell-first' | 'digit-first';
+  textSize: 'standard' | 'large';
+  highlightCompletions: boolean;
+
   toggleAudio: () => void;
   toggleTimer: () => void;    
   toggleAutoErase: () => void;
+  // [NEW] Toggles
+  toggleInputMode: () => void;
+  toggleTextSize: () => void;
+  toggleHighlightCompletions: () => void;
 
   // 8. RESET ACCOUNT
   resetProgress: () => Promise<void>; 
 
   // 9. SYNC ACTION
   pushSync: () => Promise<void>;
+
+  // 10. AUTH ACTIONS
+  logout: () => void; // [NEW] Logout Action
 }
 
 // --- STORE IMPLEMENTATION ---
@@ -111,9 +122,13 @@ export const useStore = create<UserStore>()(
       currentStreak: 0,
       lastPlayedDate: null,
 
+      // Settings Defaults
       audioEnabled: true,
       timerVisible: true,     
       autoEraseNotes: true,   
+      inputMode: 'cell-first',
+      textSize: 'standard',
+      highlightCompletions: true,
 
       // ACTIONS
       updateElo: (change) => set((state) => ({ elo: state.elo + change })),
@@ -202,6 +217,56 @@ export const useStore = create<UserStore>()(
       toggleAudio: () => set((state) => ({ audioEnabled: !state.audioEnabled })),
       toggleTimer: () => set((state) => ({ timerVisible: !state.timerVisible })),
       toggleAutoErase: () => set((state) => ({ autoEraseNotes: !state.autoEraseNotes })),
+      
+      // [NEW] Toggle Actions
+      toggleInputMode: () => set((state) => ({ 
+        inputMode: state.inputMode === 'cell-first' ? 'digit-first' : 'cell-first' 
+      })),
+      toggleTextSize: () => set((state) => ({ 
+        textSize: state.textSize === 'standard' ? 'large' : 'standard' 
+      })),
+      toggleHighlightCompletions: () => set((state) => ({ 
+        highlightCompletions: !state.highlightCompletions 
+      })),
+
+      // [NEW] LOGOUT ACTION (Resets all stores & local storage)
+      logout: () => {
+        // 1. Reset Main Store
+        set({
+          elo: 1000,
+          xp: 0,
+          stardust: 0,
+          cometShards: 0,
+          unlockedThemes: ['midnight'],
+          gamesPlayed: 0,
+          gamesWon: 0,
+          flawlessWins: 0,
+          bestTimes: { Relaxed: null, Standard: null, Mastery: null },
+          activeGame: null,
+          activeThemeId: 'midnight',
+          currentStreak: 0,
+          lastPlayedDate: null,
+          maxMistakes: 3, 
+          showDailyRewardModal: false, 
+          
+          // Reset Settings
+          audioEnabled: true,
+          timerVisible: true,
+          autoEraseNotes: true,
+          inputMode: 'cell-first',
+          textSize: 'standard',
+          highlightCompletions: true,
+        });
+
+        // 2. Reset Galaxy Store
+        useGalaxyStore.getState().resetGalaxy();
+        
+        // 3. Force Wipe Persistence (Safety Net)
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem('ku-storage');
+            localStorage.removeItem('ku-galaxy-storage');
+        }
+      },
 
       // [UPDATED] RESET PROGRESS (Clears Galaxy Too)
       resetProgress: async () => {
@@ -222,9 +287,14 @@ export const useStore = create<UserStore>()(
           lastPlayedDate: null,
           maxMistakes: 3, 
           showDailyRewardModal: false, 
+          
+          // Reset Settings
           audioEnabled: true,
           timerVisible: true,
           autoEraseNotes: true,
+          inputMode: 'cell-first',
+          textSize: 'standard',
+          highlightCompletions: true,
         });
 
         // 2. [NEW] Reset Galaxy Store
@@ -239,7 +309,7 @@ export const useStore = create<UserStore>()(
         }
       },
 
-      // [UPDATED] PUSH SYNC ACTION (Includes Galaxy Data)
+      // [UPDATED] PUSH SYNC ACTION (Includes Galaxy Data & New Settings)
       pushSync: async () => {
         const state = get();
         // [NEW] Get Galaxy State directly
@@ -264,6 +334,10 @@ export const useStore = create<UserStore>()(
           audioEnabled: state.audioEnabled,
           timerVisible: state.timerVisible,
           autoEraseNotes: state.autoEraseNotes,
+          // [NEW] New Settings
+          inputMode: state.inputMode,
+          textSize: state.textSize,
+          highlightCompletions: state.highlightCompletions,
 
           // [NEW] GALAXY DATA (Added to Payload)
           unlockedNodeIds: galaxyState.unlockedNodeIds,
@@ -309,6 +383,10 @@ export const useStore = create<UserStore>()(
                audioEnabled: pref.audioEnabled ?? true,
                timerVisible: pref.timerVisible ?? true,
                autoEraseNotes: pref.autoEraseNotes ?? true,
+               // [NEW] Sync New Settings
+               inputMode: pref.inputMode || 'cell-first',
+               textSize: pref.textSize || 'standard',
+               highlightCompletions: pref.highlightCompletions ?? true,
              });
 
              // 2. [NEW] Update Galaxy Store from Cloud Data

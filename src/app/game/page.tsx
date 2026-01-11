@@ -10,15 +10,17 @@ import NumberPad from "@/components/game/NumberPad";
 import GameOverModal from "@/components/game/GameOverModal";
 import VictoryModal, { type RewardSummary } from "@/components/game/VictoryModal"; 
 import LevelUpModal from "@/components/progression/LevelUpModal";
-// [NEW] Import Daily Reward
 import DailyRewardModal from "@/components/game/DailyRewardModal"; 
+// [NEW] Import Settings Modal
+import GameSettingsModal from "@/components/game/GameSettingsModal";
 import Button from "@/components/ui/Button";
 import { calculateGameRewards } from "@/lib/progression/rewards"; 
 import { RANKS } from "@/lib/progression/constants";
 import { playSfx } from "@/lib/audio"; 
+// [NEW] Settings Icon
+import { Settings } from "lucide-react";
 
 // --- CONFIGURATION RULES ---
-// Note: 'lives' is now handled dynamically for Standard Mode via Store
 const GAME_CONFIG = {
   Relaxed:  { holes: 30, parTime: 600 },
   Standard: { holes: 40, parTime: 300 },
@@ -31,6 +33,44 @@ const formatTime = (seconds: number) => {
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+};
+
+// [NEW] Helper to Calculate Completed Areas (Row/Col/Box)
+const getCompletedRegions = (board: number[][], solution: number[][]) => {
+  const regions = new Set<string>();
+  
+  // 1. Check Rows
+  for (let r = 0; r < 9; r++) {
+    if (board[r].every((val, c) => val === solution[r][c])) {
+      regions.add(`row-${r}`);
+    }
+  }
+  
+  // 2. Check Columns
+  for (let c = 0; c < 9; c++) {
+    if (board.every((row, r) => row[c] === solution[r][c])) {
+      regions.add(`col-${c}`);
+    }
+  }
+  
+  // 3. Check 3x3 Boxes
+  for (let br = 0; br < 3; br++) {
+    for (let bc = 0; bc < 3; bc++) {
+      let isBoxComplete = true;
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 3; c++) {
+           const row = br * 3 + r;
+           const col = bc * 3 + c;
+           if (board[row][col] !== solution[row][col]) {
+             isBoxComplete = false;
+             break;
+           }
+        }
+      }
+      if (isBoxComplete) regions.add(`box-${br}-${bc}`);
+    }
+  }
+  return regions;
 };
 
 function GameContent() {
@@ -52,9 +92,12 @@ function GameContent() {
     // SETTINGS & PERKS
     timerVisible,    
     autoEraseNotes,
-    maxMistakes,   // [NEW] From Earth Perk
-    refreshPerks,  // [NEW] To check unlocks on load
-    showDailyRewardModal // [NEW] Triggered by updateStreak if Venus is unlocked
+    maxMistakes,
+    refreshPerks,
+    showDailyRewardModal,
+    // [NEW] Store Values
+    inputMode,
+    highlightCompletions
   } = useStore();
 
   const { addHistoryStar, isNodeUnlocked } = useGalaxyStore();
@@ -65,11 +108,6 @@ function GameContent() {
     : "Standard";
 
   const [activeMode, setActiveMode] = useState<GameMode>(searchMode);
-  
-  // --- DYNAMIC LIVES CALCULATION ---
-  // Relaxed = Infinity. 
-  // Standard = Store Value (3 or 4 based on Earth Perk). 
-  // Mastery = Hardcoded 2.
   const currentMaxLives = activeMode === 'Relaxed' ? Infinity : (activeMode === 'Standard' ? maxMistakes : 2);
 
   // --- STATE ---
@@ -79,6 +117,9 @@ function GameContent() {
   const [solution, setSolution] = useState<number[][] | null>(null);
   
   const [selectedCell, setSelectedCell] = useState<{ row: number, col: number } | null>(null);
+  // [NEW] Active Number for Digit-First Mode
+  const [activeNumber, setActiveNumber] = useState<number | null>(null);
+
   const [mistakes, setMistakes] = useState<number>(0);
   const [errorCells, setErrorCells] = useState<Set<string>>(new Set());
   
@@ -97,10 +138,15 @@ function GameContent() {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [newRankId, setNewRankId] = useState<string | null>(null);
 
+  // [NEW] Settings Modal State
+  const [showSettings, setShowSettings] = useState(false);
+
   const isGameOver = currentMaxLives !== Infinity && mistakes >= currentMaxLives;
   const isGameActive = !isGameOver && !isWon;
 
-  // --- COMPLETED NUMBERS LOGIC ---
+  // --- DERIVED STATE ---
+  
+  // 1. Completed Numbers (1-9)
   const completedNumbers = useMemo(() => {
     if (!boardState || !solution) return [];
     const counts = new Array(10).fill(0);
@@ -114,10 +160,53 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
+  // 2. [NEW] Manage Transient Flash Regions
+  // Only stores regions that *just* completed for 1.5 seconds
+  const [transientRegions, setTransientRegions] = useState<Set<string>>(new Set());
+  const prevRegionsRef = useRef<Set<string>>(new Set());
+
+  // 3. Effect for Completion Sound & Transient Glow
+  const completedRegions = useMemo(() => {
+    if (!boardState || !solution) return new Set<string>();
+    return getCompletedRegions(boardState, solution);
+  }, [boardState, solution]);
+
+  useEffect(() => {
+    const current = completedRegions;
+    const prev = prevRegionsRef.current;
+
+    // Detect new completions
+    if (current.size > prev.size) {
+        const diff = new Set([...current].filter(x => !prev.has(x)));
+        
+        if (diff.size > 0 && highlightCompletions && isGameActive && mounted) {
+            playSfx('chord'); 
+            
+            // Trigger transient flash
+            setTransientRegions(prevTr => {
+                const next = new Set(prevTr);
+                diff.forEach(d => next.add(d));
+                return next;
+            });
+
+            // Remove flash after animation completes (matches CSS 1.5s)
+            setTimeout(() => {
+                 setTransientRegions(prevTr => {
+                    const next = new Set(prevTr);
+                    diff.forEach(d => next.delete(d));
+                    return next;
+                });
+            }, 1500);
+        }
+    }
+    prevRegionsRef.current = current;
+  }, [completedRegions, highlightCompletions, isGameActive, mounted]);
+
+
   // --- INIT ---
   useEffect(() => {
     setMounted(true);
-    refreshPerks(); // Check Earth/Venus status immediately
+    refreshPerks(); 
   }, [refreshPerks]);
 
   useEffect(() => {
@@ -146,10 +235,12 @@ function GameContent() {
       
       setErrorCells(new Set());
       setSelectedCell(null);
+      setActiveNumber(null); 
       setIsNoteMode(false);
       setIsWon(false);
       setRewards(null);
       setShowLevelUp(false); 
+      prevRegionsRef.current = new Set();
     } else {
       console.log("Generating new game client-side...");
       setActiveMode(searchMode); 
@@ -173,10 +264,12 @@ function GameContent() {
       setTimeElapsed(0);
 
       setSelectedCell(null);
+      setActiveNumber(null); 
       setIsNoteMode(false);
       setIsWon(false);
       setRewards(null);
       setShowLevelUp(false);
+      prevRegionsRef.current = new Set();
       
       clearGame();
     }
@@ -303,15 +396,11 @@ function GameContent() {
     return true;
   }, []);
 
-  const handleCellClick = (row: number, col: number) => {
-    playSfx('click'); 
-    setSelectedCell({ row, col });
-  };
-
   // --- INPUT & VICTORY LOGIC ---
-  const handleInput = useCallback((num: number) => {
-    if (!isGameActive || !selectedCell || !boardState || !initialBoard || !solution) return;
-    const { row, col } = selectedCell;
+  const handleInput = useCallback((num: number, target?: {row: number, col: number}) => {
+    const cell = target || selectedCell;
+    if (!isGameActive || !cell || !boardState || !initialBoard || !solution) return;
+    const { row, col } = cell;
 
     if (initialBoard[row][col] !== 0) {
       playSfx('error');
@@ -369,7 +458,6 @@ function GameContent() {
       if (checkVictory(newBoard, solution)) {
         playSfx('victory'); 
         
-        // 1. Calculate Base Rewards
         const baseRewards = calculateGameRewards({
           mode: activeMode,
           timeElapsed: timeRef.current,
@@ -378,10 +466,8 @@ function GameContent() {
           currentElo: elo
         });
 
-        // 2. Add Galaxy Star
         addHistoryStar();
 
-        // 3. Update Progression (Store adds boosts internally)
         updateElo(baseRewards.eloChange);
         addXp(baseRewards.xp); 
         addCurrency('stardust', baseRewards.stardust);
@@ -390,14 +476,12 @@ function GameContent() {
         }
         
         incrementStats(true, activeMode, timeRef.current, mistakes);
-        updateStreak(); // This triggers showDailyRewardModal if Venus unlocked
+        updateStreak(); 
 
-        // 4. Construct UI Rewards (With Visual Boosts)
         const bonuses: string[] = [...(baseRewards.bonuses || [])];
         let uiXp = baseRewards.xp;
         let uiStardust = baseRewards.stardust;
 
-        // Check Perks for UI Display only (Logic matches store)
         if (isNodeUnlocked('mercury')) {
             uiStardust = Math.floor(uiStardust * 1.10);
             bonuses.push("Mercury Bonus");
@@ -447,6 +531,16 @@ function GameContent() {
     autoEraseNotes, addHistoryStar, isNodeUnlocked
   ]);
 
+  const handleCellClick = (row: number, col: number) => {
+    if (inputMode === 'digit-first' && activeNumber !== null) {
+       handleInput(activeNumber, { row, col });
+       setSelectedCell({ row, col });
+    } else {
+       playSfx('click'); 
+       setSelectedCell({ row, col });
+    }
+  };
+
   const handleDelete = useCallback(() => {
     if (!isGameActive || !selectedCell || !boardState || !initialBoard) return;
     const { row, col } = selectedCell;
@@ -465,7 +559,9 @@ function GameContent() {
   }, [isGameActive, selectedCell, boardState, initialBoard, errorCells, saveToHistory]);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (!isGameActive || !selectedCell) return;
+    if (!isGameActive) return; 
+    if (!selectedCell) return; 
+
     const { row, col } = selectedCell;
     const key = e.key;
 
@@ -484,6 +580,15 @@ function GameContent() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleKeyDown]);
 
+  const handleNumberPadClick = (num: number) => {
+      if (inputMode === 'digit-first') {
+          playSfx('click');
+          setActiveNumber(prev => prev === num ? null : num);
+      } else {
+          handleInput(num);
+      }
+  };
+
   if (!boardState || !initialBoard) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center bg-slate-900 text-white animate-pulse">
@@ -497,32 +602,12 @@ function GameContent() {
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
     >
-      {/* 1. DAILY REWARD (Top Priority) */}
+      {/* 1. MODALS */}
       {showDailyRewardModal && <DailyRewardModal />}
-
-      {/* 2. LEVEL UP */}
-      {showLevelUp && newRankId && (
-        <LevelUpModal 
-          newRankId={newRankId} 
-          onClose={() => setShowLevelUp(false)} 
-        />
-      )}
-
-      {/* 3. GAME OVER */}
+      {showLevelUp && newRankId && <LevelUpModal newRankId={newRankId} onClose={() => setShowLevelUp(false)} />}
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
-      
-      {/* 4. VICTORY */}
-      {isWon && (
-        <VictoryModal 
-          timeElapsed={timeRef.current} 
-          mistakes={mistakes} 
-          onRetry={startNewGame}
-          cellTimes={cellTimesRef.current} 
-          // FIX: Convert 'null' to 'undefined' so TypeScript accepts it
-          finalBoard={boardState ?? undefined}
-          rewards={rewards} 
-        />
-      )}
+      {isWon && <VictoryModal timeElapsed={timeRef.current} mistakes={mistakes} onRetry={startNewGame} cellTimes={cellTimesRef.current} finalBoard={boardState ?? undefined} rewards={rewards} />}
+      {showSettings && <GameSettingsModal onClose={() => setShowSettings(false)} />}
 
       {/* TOP BAR */}
       <div className="flex w-full max-w-lg items-center justify-between mb-6 px-1">
@@ -531,7 +616,6 @@ function GameContent() {
         <div className="flex items-center gap-4">
           <div className="text-white/50 font-sans text-sm capitalize">{activeMode}</div>
           
-          {/* VISIBLE TIMER */}
           <div className="font-mono text-sm text-white/80 w-16 text-center">
              {mounted && timerVisible 
                 ? formatTime(timeElapsed) 
@@ -546,6 +630,14 @@ function GameContent() {
               {mistakes}/{currentMaxLives}
             </div>
           )}
+
+          {/* [NEW] Settings Button */}
+          <button 
+             onClick={() => setShowSettings(true)}
+             className="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
+          >
+             <Settings size={20} />
+          </button>
         </div>
       </div>
 
@@ -563,6 +655,9 @@ function GameContent() {
           onCellClick={handleCellClick} 
           errorCells={errorCells}
           notes={notes}
+          // [UPDATED] Pass Transient Regions for flashing
+          transientRegions={highlightCompletions ? transientRegions : undefined}
+          activeNumber={activeNumber}
         />
       </div>
 
@@ -573,9 +668,11 @@ function GameContent() {
         ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}
       `}>
         <NumberPad 
-          onNumberClick={handleInput} 
+          onNumberClick={handleNumberPadClick} 
           onDelete={handleDelete} 
           completedNumbers={completedNumbers}
+          activeNumber={activeNumber}
+          inputMode={inputMode}
         />
         <div className="flex gap-4 w-full justify-center">
           <Button variant="secondary" className="w-1/3" onClick={handleUndo} disabled={history.length === 0}>Undo</Button>
