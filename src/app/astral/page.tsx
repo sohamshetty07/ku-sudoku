@@ -58,7 +58,6 @@ export default function AstralChartPage() {
     unlockedNodeIds 
   } = useGalaxyStore();
   
-  // [UPDATED] Added pushSync here to enable cloud saving on unlock
   const { stardust, cometShards, addCurrency, pushSync } = useStore();
 
   const [camera, setCamera] = useState({ x: 0, y: 0, z: INITIAL_ZOOM });
@@ -223,7 +222,7 @@ export default function AstralChartPage() {
     addCurrency(selectedNode.currency, -selectedNode.cost);
     unlockNode(selectedNode.id);
     
-    // [UPDATED] Trigger Cloud Sync immediately
+    // Trigger Cloud Sync immediately
     pushSync();
   };
 
@@ -241,7 +240,6 @@ export default function AstralChartPage() {
       >
         <div className="absolute top-1/2 left-1/2 w-0 h-0 will-change-transform" style={{ transform: `scale(${camera.z}) translate(${camera.x}px, ${camera.y}px)` }}>
           
-          {/* RENDER ONLY VISIBLE NODES */}
           {mounted && visibleNodes.map(node => {
              const pos = getNodePosition(node);
              const parentPos = node.parentId ? getNodePosition(SOLAR_SYSTEM.find(n => n.id === node.parentId)!) : { x: 0, y: 0 };
@@ -276,7 +274,6 @@ export default function AstralChartPage() {
                      className={`
                         absolute flex items-center justify-center rounded-full
                         ${unlocked ? 'hover:scale-110 hover:z-50' : ''}
-                        /* [FIX] LOCKED STATE: High Grayscale, Low Brightness */
                         ${!unlocked ? 'grayscale-[1] brightness-[0.4] opacity-80 cursor-not-allowed' : 'cursor-pointer'}
                         ${!unlocked && unlockable ? 'cursor-pointer hover:brightness-75 hover:scale-105' : ''}
                      `}
@@ -289,7 +286,7 @@ export default function AstralChartPage() {
                         marginTop: -(node.radius * scale), 
                         zIndex: node.type === 'Star' ? 20 : 30,
                         transition: 'opacity 1s ease-out, transform 0.2s',
-                        ...customStyle // ALWAYS apply sphere texture, even when locked
+                        ...customStyle
                      }}
                    >
                      {/* LOCK ICON OVERLAY */}
