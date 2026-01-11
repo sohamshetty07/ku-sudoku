@@ -14,14 +14,13 @@ export async function POST(req: Request) {
     const body = await req.json();
     await dbConnect();
 
-    // 1. FETCH (Fetch-Merge-Save Strategy)
+    // 1. FETCH
     let user = await User.findOne({ email: session.user.email });
 
     if (!user) {
       user = new User({ email: session.user.email });
     }
 
-    // 2. MERGE LOGIC
     // Ensure sub-documents exist for legacy users or new accounts
     if (!user.progression) user.progression = {};
     if (!user.stats) user.stats = {};
@@ -33,19 +32,34 @@ export async function POST(req: Request) {
     const set = user.settings;
     const g = user.galaxy;
 
-    // --- PROGRESSION: XP (Max Strategy) ---
-    // XP only goes up, so it is safe to strictly take the higher value.
+    // --- CRITICAL FIX: THE SENIORITY RULE ---
+    // We compare 'gamesPlayed' to decide which data source is authoritative.
+    // If the incoming client has FEWER games than the server, it means 
+    // it's a new device or an outdated session. We MUST NOT overwrite 
+    // volatile stats (ELO, Currency) with the client's lower/default values.
+    
+    const clientGames = body.gamesPlayed || 0;
+    const serverGames = s.gamesPlayed || 0;
+    
+    // Logic: If Client is "ahead" or equal, trust Client. If Server is "ahead", trust Server.
+    const trustClient = clientGames >= serverGames;
+
+
+    // --- 1. PROGRESSION (Smart Merge) ---
+    
+    // XP: Always take the highest value (Max Strategy) - XP never decreases.
     if ((body.xp || 0) > p.xp) p.xp = body.xp;
 
-    // --- ECONOMY & ELO (Client Authority Strategy) ---
-    // [FIXED] Currency decreases when spent. ELO decreases on loss.
-    // We must trust the active client's wallet state over the server's old state.
-    if (body.stardust !== undefined) p.stardust = body.stardust;
-    if (body.cometShards !== undefined) p.cometShards = body.cometShards;
-    if (body.elo !== undefined) p.elo = body.elo;
+    // ELO & ECONOMY: Only update if we trust the client (Seniority Rule).
+    // This prevents a fresh phone login (ELO 1000) from wiping your server progress (ELO 1500).
+    if (trustClient) {
+        if (body.stardust !== undefined) p.stardust = body.stardust;
+        if (body.cometShards !== undefined) p.cometShards = body.cometShards;
+        if (body.elo !== undefined) p.elo = body.elo;
+    } 
 
-    // --- THEMES (Union Strategy) ---
-    // We combine themes so purchases from different devices are merged.
+    // --- 2. THEMES (Union Strategy) ---
+    // Always merge unlocked items, regardless of seniority.
     const incomingThemes = body.unlockedThemes || [];
     incomingThemes.forEach((t: string) => {
       if (!p.unlockedThemes.includes(t)) {
@@ -53,9 +67,9 @@ export async function POST(req: Request) {
       }
     });
 
-    // --- [NEW] GALAXY SYNC (Union Strategy) ---
+    // --- 3. GALAXY SYNC (Union Strategy) ---
     
-    // 1. PLANETS: Merge unlocked planets so progress is never lost
+    // Planets: Merge unlocked planets so progress is never lost
     const incomingNodes = body.unlockedNodeIds || [];
     incomingNodes.forEach((nodeId: string) => {
       if (!g.unlockedNodeIds.includes(nodeId)) {
@@ -63,10 +77,8 @@ export async function POST(req: Request) {
       }
     });
 
-    // 2. STARS: Merge visual history stars (prevent duplicates by ID)
+    // Stars: Merge visual history stars (prevent duplicates by ID)
     const incomingStars = body.historyStars || [];
-    // Create a Set of existing IDs for O(1) lookup to avoid duplicates
-    // Note: We cast to 'any' because Mongoose types might be strict here
     const existingStarIds = new Set(g.historyStars.map((star: any) => star.id));
     
     incomingStars.forEach((star: any) => {
@@ -75,15 +87,16 @@ export async function POST(req: Request) {
       }
     });
     
-    // Cap history stars to prevent DB bloat (e.g., keep last 1000)
-    // This keeps the sync payload light over time
+    // Cap history stars to prevent DB bloat
     if (g.historyStars.length > 1000) {
         g.historyStars = g.historyStars.slice(g.historyStars.length - 1000);
     }
 
-    // --- CUMULATIVE STATS (Max Strategy) ---
+    // --- 4. CUMULATIVE STATS (Max Strategy) ---
     // These metrics generally only increment.
-    if ((body.gamesPlayed || 0) > s.gamesPlayed) s.gamesPlayed = body.gamesPlayed;
+    // We update 'gamesPlayed' based on whoever is higher (usually client if trustClient is true).
+    if (clientGames > serverGames) s.gamesPlayed = clientGames;
+    
     if ((body.gamesWon || 0) > s.gamesWon) s.gamesWon = body.gamesWon;
     if ((body.flawlessWins || 0) > s.flawlessWins) s.flawlessWins = body.flawlessWins;
     
@@ -95,12 +108,12 @@ export async function POST(req: Request) {
         }
     }
 
-    // --- BEST TIMES (Min Strategy with Null Checks) ---
-    // Use 'any' for key indexing to satisfy TS strict mode if needed, or define specific type
+    // --- 5. BEST TIMES (Min Strategy) ---
+    // Keep the fastest time recorded anywhere.
     const updateBestTime = (field: string, incoming: number | null | undefined) => {
         if (!incoming) return; 
         
-        // @ts-ignore: Dynamic access to Mongoose subdocument
+        // @ts-ignore: Dynamic key access
         const current = s[field];
         // Update if DB is empty (null) OR incoming is faster (lower)
         if (current === null || incoming < current) {
@@ -113,11 +126,14 @@ export async function POST(req: Request) {
     updateBestTime('bestTimeStandard', body.bestTimes?.Standard);
     updateBestTime('bestTimeMastery', body.bestTimes?.Mastery);
 
-    // --- SETTINGS (Overwrite Strategy) ---
-    if (body.activeThemeId) set.activeThemeId = body.activeThemeId;
-    if (body.audioEnabled !== undefined) set.audioEnabled = body.audioEnabled;
-    if (body.timerVisible !== undefined) set.timerVisible = body.timerVisible;
-    if (body.autoEraseNotes !== undefined) set.autoEraseNotes = body.autoEraseNotes;
+    // --- 6. SETTINGS (Overwrite Strategy) ---
+    // Settings usually follow the most recent active device.
+    if (trustClient) {
+        if (body.activeThemeId) set.activeThemeId = body.activeThemeId;
+        if (body.audioEnabled !== undefined) set.audioEnabled = body.audioEnabled;
+        if (body.timerVisible !== undefined) set.timerVisible = body.timerVisible;
+        if (body.autoEraseNotes !== undefined) set.autoEraseNotes = body.autoEraseNotes;
+    }
 
     // Update sync timestamp
     user.lastSyncedAt = new Date();
