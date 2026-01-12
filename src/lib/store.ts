@@ -18,11 +18,25 @@ export interface GameState {
   history: { board: number[][]; notes: Record<string, number[]> }[];
   mistakes: number;
   timeElapsed: number;
-  // [UPDATED] Added 'Daily' to Difficulty Type
-  difficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily';
+  // [UPDATED] Added 'Expedition' to Difficulty Type
+  difficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition';
   cellTimes: Record<string, number>; 
   isGameOver?: boolean;
   isWon?: boolean;
+}
+
+// [NEW] EXPEDITION STATE INTERFACE
+export interface ExpeditionState {
+  isActive: boolean;
+  sector: number; // Current Level (1, 2, 3...)
+  lives: number;  // Current HP
+  maxLives: number; // Max HP (can be modified by artifacts)
+  artifacts: string[]; // IDs of equipped artifacts
+  // Track dynamic state of artifacts (e.g., cooldowns, charges used)
+  artifactState: Record<string, {
+    usesLeft?: number;
+    cooldownEnd?: number;
+  }>;
 }
 
 interface UserStore {
@@ -66,12 +80,19 @@ interface UserStore {
     Mastery: number | null;
   };
   statsLastUpdated: number;
-  incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily', time: number, mistakes: number) => void;
+  // [UPDATED] Added Expedition to mode union
+  incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition', time: number, mistakes: number) => void;
 
   // 4. GAME STATE
   activeGame: GameState | null;
   saveGame: (game: GameState) => void;
   clearGame: () => void;
+
+  // [NEW] EXPEDITION ACTIONS
+  expedition: ExpeditionState;
+  startExpedition: (artifacts: string[], initialLives?: number) => void;
+  updateExpedition: (updates: Partial<ExpeditionState>) => void;
+  endExpedition: () => void;
 
   // PERKS
   maxMistakes: number; 
@@ -82,9 +103,9 @@ interface UserStore {
   closeDailyRewardModal: () => void;
 
   // VISUALS
-  // [UPDATED] Added 'Daily' to Theme Difficulty
-  themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily';
-  setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily') => void;
+  // [UPDATED] Added 'Expedition'
+  themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition';
+  setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition') => void;
   activeThemeId: string;
   setActiveTheme: (themeId: string) => void;
 
@@ -150,6 +171,16 @@ export const useStore = create<UserStore>()(
       activeThemeId: 'midnight',
       currentStreak: 0,
       lastPlayedDate: null,
+
+      // [NEW] EXPEDITION DEFAULTS
+      expedition: {
+        isActive: false,
+        sector: 1,
+        lives: 3,
+        maxLives: 3,
+        artifacts: [],
+        artifactState: {}
+      },
 
       audioEnabled: true,
       timerVisible: true,     
@@ -264,10 +295,9 @@ export const useStore = create<UserStore>()(
           const isFlawless = mistakes === 0;
           const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
 
-          // Only track best times for standard modes, ignore Daily for local bests if desired
-          // or add logic to handle Daily separately. For now, we skip Daily best times in local store
-          // as they are tracked on the server leaderboard.
-          if (mode !== 'Daily') {
+          // Only track best times for standard modes
+          // Skip Daily (tracked on server) and Expedition (tracked via Sectors)
+          if (mode !== 'Daily' && mode !== 'Expedition') {
               const currentBest = state.bestTimes[mode];
               let newBestTime = currentBest;
               if (currentBest === null || time < currentBest) {
@@ -280,7 +310,6 @@ export const useStore = create<UserStore>()(
                 bestTimes: { ...state.bestTimes, [mode]: newBestTime }
               };
           } else {
-              // Just update wins without best time logic for Daily
                updates = {
                 ...updates,
                 gamesWon: newGamesWon,
@@ -302,6 +331,29 @@ export const useStore = create<UserStore>()(
       setActiveTheme: (themeId) => set((state) => ({ 
         activeThemeId: themeId,
         settingsLastUpdated: Date.now(),
+        isDirty: true
+      })),
+
+      // [NEW] EXPEDITION ACTIONS
+      startExpedition: (artifacts, initialLives = 3) => set({
+        expedition: {
+          isActive: true,
+          sector: 1,
+          lives: initialLives,
+          maxLives: initialLives,
+          artifacts: artifacts,
+          artifactState: {}
+        },
+        isDirty: true
+      }),
+
+      updateExpedition: (updates) => set((state) => ({
+        expedition: { ...state.expedition, ...updates },
+        isDirty: true
+      })),
+
+      endExpedition: () => set((state) => ({
+        expedition: { ...state.expedition, isActive: false },
         isDirty: true
       })),
 
@@ -361,6 +413,17 @@ export const useStore = create<UserStore>()(
           audioEnabled: true, timerVisible: true, autoEraseNotes: true,
           inputMode: 'cell-first', textSize: 'standard', highlightCompletions: true, settingsLastUpdated: 0,
           pendingTransactions: [],
+          
+          // Reset Expedition
+          expedition: {
+            isActive: false,
+            sector: 1,
+            lives: 3,
+            maxLives: 3,
+            artifacts: [],
+            artifactState: {}
+          },
+          
           isDirty: false
         });
         useGalaxyStore.getState().resetGalaxy();

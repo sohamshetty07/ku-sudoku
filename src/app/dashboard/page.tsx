@@ -7,7 +7,8 @@ import { useSession } from "next-auth/react";
 import Button from "@/components/ui/Button";
 import { 
   Play, Lock, Zap, Clock, Trophy, Star, Sparkles, 
-  Settings, AlertCircle, Telescope, Palette, Globe 
+  Settings, AlertCircle, Telescope, Palette, Globe,
+  Hexagon // [NEW] Added icon for Expedition
 } from "lucide-react";
 import RankBadge from "@/components/progression/RankBadge";
 import XpProgressBar from "@/components/progression/XpProgressBar";
@@ -75,6 +76,8 @@ export default function Dashboard() {
   const isMasteryLocked = xp < 1500;
   const isShopUnlocked = xp >= 500; 
   const isGalaxyUnlocked = true; 
+  // [NEW] Void Walker Logic
+  const isVoidWalker = xp >= 15000;
 
   const today = new Date().toISOString().split('T')[0];
   const hasPlayedToday = lastPlayedDate === today;
@@ -93,7 +96,7 @@ export default function Dashboard() {
 
     window.addEventListener("focus", onFocus);
 
-    // 2. [UPDATED] Check Real Daily Status Robustly
+    // 2. Check Real Daily Status Robustly
     if (status === 'loading') {
        // Do nothing, wait for auth to settle. 
        // isDailyLoading defaults to true, so UI is safe.
@@ -426,6 +429,33 @@ export default function Dashboard() {
               </div>
             </div>
           </button>
+          
+          {/* VOID EXPEDITION (Endgame) */}
+          <Link href={mounted && isVoidWalker ? "/expedition" : "#"} className={`block w-full ${!mounted || !isVoidWalker ? 'pointer-events-none' : ''}`}>
+             <div className={`
+                flex items-center justify-between p-4 rounded-xl border transition-all duration-300
+                ${mounted && isVoidWalker
+                  ? 'bg-purple-600/10 border-purple-500 ring-1 ring-purple-500/50 shadow-[0_0_20px_rgba(147,51,234,0.15)] hover:bg-purple-600/20 hover:scale-[1.02] cursor-pointer'
+                  : 'bg-white/5 border-white/5 opacity-50'
+                }
+             `}>
+               <div className="flex items-center gap-4">
+                 <div className={`p-2.5 rounded-lg ${mounted && isVoidWalker ? 'bg-purple-500 text-white' : 'bg-white/10 text-white/50'}`}>
+                   {mounted && isVoidWalker ? <Hexagon size={20} className="animate-pulse-slow" /> : <Lock size={20} />}
+                 </div>
+                 <div className="text-left">
+                   <div className="text-white font-bold text-sm tracking-wide">VOID EXPEDITION</div>
+                   <div className="text-[10px] text-white/50">
+                     {mounted && isVoidWalker ? 'Roguelike Survival • Artifacts' : 'Requires Rank: Void Walker'}
+                   </div>
+                 </div>
+               </div>
+               
+               {mounted && isVoidWalker && (
+                  <div className="h-2 w-2 rounded-full bg-purple-500 shadow-[0_0_10px_#A855F7]" />
+               )}
+             </div>
+          </Link>
         </div>
 
         {/* 6. START BUTTON (With Warnings) */}
@@ -450,10 +480,10 @@ export default function Dashboard() {
 
         {mounted && process.env.NODE_ENV === 'development' && (
           <button 
-           onClick={() => useStore.setState({ stardust: 20000, cometShards: 100 })}
+           onClick={() => useStore.setState({ stardust: 20000, cometShards: 100, xp: 15000, elo: 5000 })}
             className="text-[10px] text-white/20 hover:text-red-500 mt-4 uppercase tracking-widest"
           >
-            [DEV] Inject Resources
+            [DEV] Inject Resources (Void Walker)
           </button>
         )}
         

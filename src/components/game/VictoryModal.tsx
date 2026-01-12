@@ -2,8 +2,10 @@
 import React, { useMemo, useState, useEffect } from "react";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
-import { Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles, Globe } from "lucide-react";
-import { useStore } from "@/lib/store";
+import { 
+  Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles, Globe, 
+  ArrowRight, Hexagon, RotateCcw, Home
+} from "lucide-react";
 
 // Define the type locally if not available in a separate file yet
 export type RewardSummary = {
@@ -11,7 +13,7 @@ export type RewardSummary = {
   stardust: number;
   cometShards: number;
   eloChange: number;
-  bonuses: string[]; // e.g., ["Mercury Bonus", "Flawless"]
+  bonuses: string[]; 
 };
 
 type VictoryModalProps = {
@@ -20,8 +22,10 @@ type VictoryModalProps = {
   onRetry: () => void;
   cellTimes?: Record<string, number>; 
   rewards?: RewardSummary | null; 
-  // [FIX] Added this back to resolve the error
-  finalBoard?: number[][]; 
+  finalBoard?: number[][];
+  // [NEW] Expedition Props
+  isExpedition?: boolean;
+  nextSector?: number; 
 };
 
 const formatTime = (seconds: number) => {
@@ -36,8 +40,10 @@ export default function VictoryModal({
   onRetry,
   cellTimes = {}, 
   rewards,
+  isExpedition = false,
+  nextSector,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  finalBoard, // Kept here so it can be accepted as a prop, even if unused visually yet
+  finalBoard,
 }: VictoryModalProps) {
   
   const [showHeatmap, setShowHeatmap] = useState(false);
@@ -50,13 +56,11 @@ export default function VictoryModal({
   useEffect(() => {
     if (!rewards) return;
 
-    // Reset counters when rewards change
     setDisplayedXp(0);
     setDisplayedStardust(0);
 
-    // 1. Animate XP
     const xpTarget = rewards.xp;
-    const xpStep = Math.max(1, Math.ceil(xpTarget / 25)); // 25 frames
+    const xpStep = Math.max(1, Math.ceil(xpTarget / 25));
     
     const xpInterval = setInterval(() => {
       setDisplayedXp(prev => {
@@ -69,7 +73,6 @@ export default function VictoryModal({
       });
     }, 20);
 
-    // 2. Animate Stardust
     const dustTarget = rewards.stardust;
     const dustStep = Math.max(1, Math.ceil(dustTarget / 25));
 
@@ -102,18 +105,18 @@ export default function VictoryModal({
     const intensity = time / maxTime; 
 
     if (intensity === 0) return "rgba(255, 255, 255, 0.05)"; 
-    if (intensity < 0.2) return `rgba(6, 182, 212, ${0.1 + intensity})`; // Cyan (Fast)
-    if (intensity < 0.5) return `rgba(168, 85, 247, ${intensity})`; // Purple (Medium)
-    return `rgba(239, 68, 68, ${intensity})`; // Red (Slow/Stuck)
+    if (intensity < 0.2) return `rgba(6, 182, 212, ${0.1 + intensity})`; // Cyan
+    if (intensity < 0.5) return `rgba(168, 85, 247, ${intensity})`; // Purple
+    return `rgba(239, 68, 68, ${intensity})`; // Red
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-midnight/80 backdrop-blur-md transition-all duration-500 animate-in fade-in">
       
-      <div className="w-[90%] max-w-sm transform rounded-3xl border border-neon-cyan/30 bg-[#0F172A]/95 p-6 text-center shadow-[0_0_50px_rgba(6,182,212,0.2)] backdrop-blur-xl">
+      <div className="w-[90%] max-w-sm transform rounded-3xl border border-neon-cyan/30 bg-[#0F172A]/95 p-6 text-center shadow-[0_0_50px_rgba(6,182,212,0.2)] backdrop-blur-xl relative">
         
         {/* VIEW TOGGLE */}
-        <div className="flex justify-end mb-2">
+        <div className="flex justify-end mb-2 relative z-10">
            <button 
              onClick={() => setShowHeatmap(!showHeatmap)}
              className="text-[10px] uppercase tracking-widest font-bold text-slate-500 hover:text-neon-cyan flex items-center gap-1 transition-colors"
@@ -128,31 +131,49 @@ export default function VictoryModal({
           <div className="animate-in slide-in-from-bottom-4 fade-in duration-500">
             
             {/* ICON */}
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-b from-neon-cyan/20 to-transparent ring-1 ring-neon-cyan/50 shadow-[0_0_30px_rgba(6,182,212,0.4)]">
-              <Trophy size={36} className="text-neon-cyan drop-shadow-[0_0_10px_rgba(6,182,212,0.8)]" />
+            <div className="mx-auto mb-4 flex justify-center relative z-10">
+              <div className={`
+                p-6 rounded-full border shadow-2xl
+                ${isExpedition 
+                    ? "bg-indigo-500/20 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.4)]" 
+                    : "bg-cyan-500/20 border-cyan-500/50 shadow-[0_0_40px_rgba(6,182,212,0.4)]"
+                }
+              `}>
+                {isExpedition ? (
+                    <Hexagon size={48} className="text-indigo-400" strokeWidth={1.5} />
+                ) : (
+                    <Trophy size={48} className="text-cyan-400" strokeWidth={1.5} />
+                )}
+              </div>
             </div>
 
-            <h2 className="mb-1 text-3xl font-bold text-white tracking-wide font-mono">VICTORY</h2>
-            <p className="text-slate-400 text-xs mb-8 font-mono tracking-widest uppercase">Logic Stabilized</p>
+            <h2 className="mb-1 text-3xl font-bold text-white tracking-wide font-mono uppercase">
+                {isExpedition ? "SECTOR CLEARED" : "VICTORY"}
+            </h2>
+            <p className="text-slate-400 text-xs mb-8 font-mono tracking-widest uppercase">
+                {isExpedition ? "Warp Drive Charging..." : "Logic Stabilized"}
+            </p>
             
             {/* REWARDS GRID */}
             {rewards && (
               <div className="space-y-3 mb-8">
                 
                 <div className="grid grid-cols-2 gap-3">
-                    {/* ELO CARD */}
-                    <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5 flex flex-col items-center justify-center">
-                        <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1">Rating</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xl font-mono font-bold text-white">
-                                {rewards.eloChange >= 0 ? "+" : ""}{rewards.eloChange}
-                            </span>
-                            <ArrowUp size={14} className="text-emerald-400" />
+                    {/* ELO CARD (Hidden in Expedition usually, but flexible) */}
+                    {!isExpedition && (
+                        <div className="bg-slate-800/50 rounded-xl p-3 border border-white/5 flex flex-col items-center justify-center">
+                            <span className="text-[9px] text-slate-500 uppercase tracking-widest font-bold mb-1">Rating</span>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xl font-mono font-bold text-white">
+                                    {rewards.eloChange >= 0 ? "+" : ""}{rewards.eloChange}
+                                </span>
+                                <ArrowUp size={14} className="text-emerald-400" />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* XP CARD */}
-                    <div className="bg-purple-500/10 rounded-xl p-3 border border-purple-500/20 flex flex-col items-center justify-center relative overflow-hidden">
+                    <div className={`bg-purple-500/10 rounded-xl p-3 border border-purple-500/20 flex flex-col items-center justify-center relative overflow-hidden ${isExpedition ? 'col-span-2' : ''}`}>
                         <div className="absolute inset-0 bg-purple-500/5 blur-xl"></div>
                         <span className="text-[9px] text-purple-300/60 uppercase tracking-widest font-bold mb-1">XP Gained</span>
                         <div className="flex items-center gap-1 relative z-10">
@@ -186,7 +207,7 @@ export default function VictoryModal({
                     )}
                 </div>
 
-                {/* BONUSES PILLS (Planetary Perks) */}
+                {/* BONUSES PILLS */}
                 {rewards.bonuses.length > 0 && (
                     <div className="flex flex-wrap gap-2 justify-center pt-2">
                         {rewards.bonuses.map((bonus, i) => (
@@ -234,10 +255,26 @@ export default function VictoryModal({
         )}
         
         {/* ACTIONS */}
-        <div className="space-y-3">
-          <Button variant="primary" fullWidth onClick={onRetry} className="h-12 text-sm font-bold tracking-wider">INITIATE NEW SEQUENCE</Button>
-          <Link href="/dashboard" className="block w-full">
-            <Button variant="secondary" fullWidth className="h-12 text-xs text-slate-500 hover:text-white border-transparent bg-transparent">Return to Void</Button>
+        <div className="space-y-3 relative z-20">
+          <Button 
+            variant="primary" 
+            fullWidth 
+            onClick={onRetry} 
+            className={`h-12 text-sm font-bold tracking-wider ${isExpedition ? 'bg-indigo-600 hover:bg-indigo-500' : ''}`}
+          >
+             <div className="flex items-center justify-center gap-2">
+                {isExpedition ? <ArrowRight size={18} /> : <RotateCcw size={18} />}
+                <span>{isExpedition ? `WARP TO SECTOR ${nextSector}` : "INITIATE NEW SEQUENCE"}</span>
+             </div>
+          </Button>
+
+          <Link href={isExpedition ? "/expedition" : "/dashboard"} className="block w-full">
+            <Button variant="secondary" fullWidth className="h-12 text-xs text-slate-500 hover:text-white border-transparent bg-transparent">
+                <div className="flex items-center justify-center gap-2">
+                    <Home size={16} />
+                    <span>{isExpedition ? "Return to Loadout" : "Return to Void"}</span>
+                </div>
+            </Button>
           </Link>
         </div>
 

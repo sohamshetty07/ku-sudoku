@@ -6,9 +6,10 @@ import { XCircle, RefreshCw, Home } from "lucide-react";
 
 type GameOverModalProps = {
   onRetry: () => void;
+  isExpedition?: boolean;
 };
 
-export default function GameOverModal({ onRetry }: GameOverModalProps) {
+export default function GameOverModal({ onRetry, isExpedition = false }: GameOverModalProps) {
   const [isVisible, setIsVisible] = useState(false);
 
   // Trigger animation on mount
@@ -21,7 +22,7 @@ export default function GameOverModal({ onRetry }: GameOverModalProps) {
     <div 
         className={`
             fixed inset-0 z-[100] flex items-center justify-center 
-            bg-[#0F172A]/90 backdrop-blur-sm 
+            bg-[#0F172A]/95 backdrop-blur-sm 
             transition-opacity duration-500
             ${isVisible ? "opacity-100" : "opacity-0"}
         `}
@@ -52,33 +53,37 @@ export default function GameOverModal({ onRetry }: GameOverModalProps) {
             </div>
 
             <h2 className="mb-2 text-2xl font-bold font-mono text-white tracking-[0.2em] uppercase">
-                Protocol Failed
+                {isExpedition ? "SIGNAL LOST" : "PROTOCOL FAILED"}
             </h2>
             
             <p className="mb-8 text-sm text-slate-400 font-sans leading-relaxed max-w-[240px] mx-auto">
-                Too many errors detected. The Void has consumed this pattern.
+                {isExpedition 
+                  ? "Your vessel's integrity has been compromised. The expedition ends here." 
+                  : "Too many errors detected. The Void has consumed this pattern."}
             </p>
             
             <div className="space-y-3">
-                {/* Retry Button */}
-                <Button 
-                    variant="primary" 
-                    fullWidth 
-                    onClick={onRetry}
-                    className="bg-red-600 hover:bg-red-500 border-red-500 shadow-lg shadow-red-900/30"
-                >
-                    <div className="flex items-center justify-center gap-2">
-                        <RefreshCw size={18} />
-                        <span>Retry</span>
-                    </div>
-                </Button>
+                {/* Retry Button - Only available for standard modes (Not Roguelike) */}
+                {!isExpedition && (
+                    <Button 
+                        variant="primary" 
+                        fullWidth 
+                        onClick={onRetry}
+                        className="bg-red-600 hover:bg-red-500 border-red-500 shadow-lg shadow-red-900/30"
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            <RefreshCw size={18} />
+                            <span>Retry</span>
+                        </div>
+                    </Button>
+                )}
 
-                {/* Exit Link */}
-                <Link href="/dashboard" className="block w-full">
+                {/* Exit Link - Dynamic destination */}
+                <Link href={isExpedition ? "/expedition" : "/dashboard"} className="block w-full">
                     <Button variant="secondary" fullWidth className="border-white/10 hover:bg-white/5 text-slate-400 hover:text-white">
                         <div className="flex items-center justify-center gap-2">
                             <Home size={18} />
-                            <span>Return to Sanctuary</span>
+                            <span>{isExpedition ? "Return to Loadout" : "Return to Sanctuary"}</span>
                         </div>
                     </Button>
                 </Link>

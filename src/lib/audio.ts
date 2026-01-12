@@ -14,8 +14,22 @@ const getContext = () => {
   return audioCtx;
 };
 
-// [UPDATED] Added 'chord' to types
-type SoundType = 'click' | 'input' | 'error' | 'erase' | 'gameover' | 'victory' | 'heavy-impact' | 'success' | 'chord';
+// [UPDATED] Added new sound types to the union type
+export type SoundType = 
+  | 'click' 
+  | 'input' 
+  | 'error' 
+  | 'erase' 
+  | 'gameover' 
+  | 'victory' 
+  | 'heavy-impact' 
+  | 'success' 
+  | 'chord'
+  | 'ice-shatter'  // [NEW] Chronos Shard
+  | 'scan'         // [NEW] Oracle Lens / Nano Scribe
+  | 'shield-block' // [NEW] Aegis Shield
+  | 'revive'       // [NEW] Void Anchor
+  | 'upgrade';     // [NEW] Intermission
 
 export const playSfx = (type: SoundType) => {
   // 1. Check if Audio is Enabled in Store
@@ -135,7 +149,7 @@ export const playSfx = (type: SoundType) => {
       break;
     }
 
-    // [NEW] Chord for Row/Col Completion
+    // Chord for Row/Col Completion
     case 'chord': {
       // Major triad swell (C4, E4, G4)
       const notes = [261.63, 329.63, 392.00]; 
@@ -148,7 +162,7 @@ export const playSfx = (type: SoundType) => {
         osc.type = 'sine'; // Sine for a smooth, pure tone
         osc.frequency.setValueAtTime(freq, now);
         
-        // Quick swell and fade (gentler than 'input', faster than 'victory')
+        // Quick swell and fade
         gain.gain.setValueAtTime(0, now);
         gain.gain.linearRampToValueAtTime(0.05, now + 0.05); // Fast attack
         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.6); // Short decay
@@ -177,7 +191,7 @@ export const playSfx = (type: SoundType) => {
         break;
     }
 
-    // [NEW] SUCCESS (For Comet Catch)
+    // SUCCESS (For Comet Catch / Wealth)
     case 'success': {
         // High-pitched "Coin" shimmer
         const osc = ctx.createOscillator();
@@ -205,7 +219,7 @@ export const playSfx = (type: SoundType) => {
         break;
     }
 
-    // [NEW] "GENESIS" IMPACT SOUND (For Planet Unlock)
+    // "GENESIS" IMPACT SOUND (For Planet Unlock / Start Run)
     case 'heavy-impact': {
         // 1. The Sub-Bass (Impact Thud)
         const subOsc = ctx.createOscillator();
@@ -262,6 +276,101 @@ export const playSfx = (type: SoundType) => {
 
         shineOsc.start(now);
         shineOsc.stop(now + 2.5);
+        break;
+    }
+
+    // [NEW] Ice Shatter (For Chronos Shard)
+    case 'ice-shatter': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(2000, now);
+        osc.frequency.exponentialRampToValueAtTime(100, now + 0.3); // Fast drop
+        
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+        
+        osc.start(now);
+        osc.stop(now + 0.3);
+        break;
+    }
+
+    // [NEW] Scan (For Lens/Drone)
+    case 'scan': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.linearRampToValueAtTime(800, now + 0.2); // Up sweep
+        
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.2);
+        
+        osc.start(now);
+        osc.stop(now + 0.2);
+        break;
+    }
+
+    // [NEW] Shield Block (For Aegis)
+    case 'shield-block': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.2);
+        
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        
+        osc.start(now);
+        osc.stop(now + 0.2);
+        break;
+    }
+
+    // [NEW] Revive (For Anchor)
+    case 'revive': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(200, now);
+        osc.frequency.exponentialRampToValueAtTime(600, now + 1.0); // Slow rise
+        
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 1.0);
+        
+        osc.start(now);
+        osc.stop(now + 1.0);
+        break;
+    }
+
+    // [NEW] Upgrade (For Intermission)
+    case 'upgrade': {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(300, now);
+        osc.frequency.linearRampToValueAtTime(600, now + 0.3);
+        
+        gain.gain.setValueAtTime(0.1, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        
+        osc.start(now);
+        osc.stop(now + 0.3);
         break;
     }
   }
