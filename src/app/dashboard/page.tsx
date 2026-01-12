@@ -67,7 +67,9 @@ export default function Dashboard() {
   const [mounted, setMounted] = useState(false);
   
   // Daily Completion State
+  // Default to LOADING (true) to prevent click-through exploits
   const [dailyCompleted, setDailyCompleted] = useState(false);
+  const [isDailyLoading, setIsDailyLoading] = useState(true);
 
   // LOGIC
   const isMasteryLocked = xp < 1500;
@@ -89,8 +91,14 @@ export default function Dashboard() {
       }
     };
 
-    // 2. [UPDATED] Check Real Daily Status
-    if (isLoggedIn) {
+    window.addEventListener("focus", onFocus);
+
+    // 2. [UPDATED] Check Real Daily Status Robustly
+    if (status === 'loading') {
+       // Do nothing, wait for auth to settle. 
+       // isDailyLoading defaults to true, so UI is safe.
+    } else if (isLoggedIn) {
+      // User is authenticated, check server
       fetch('/api/daily/status')
         .then((res) => res.json())
         .then((data) => {
@@ -98,12 +106,15 @@ export default function Dashboard() {
             setDailyCompleted(true);
           }
         })
-        .catch((err) => console.error("Failed to check daily status:", err));
+        .catch((err) => console.error("Failed to check daily status:", err))
+        .finally(() => setIsDailyLoading(false));
+    } else {
+       // Not logged in, stop loading (allow default behavior or login redirect flow)
+       setIsDailyLoading(false);
     }
 
-    window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [pushSync, isLoggedIn]);
+  }, [pushSync, isLoggedIn, status]);
 
   return (
     <main 
@@ -294,7 +305,24 @@ export default function Dashboard() {
 
         {/* 4. DAILY CHALLENGE CARD */}
         <div className="w-full">
-            {dailyCompleted ? (
+            {isDailyLoading ? (
+                 /* LOADING STATE */
+                 <div className="block relative overflow-hidden rounded-2xl border border-white/5 bg-white/5 p-4 animate-pulse select-none cursor-wait">
+                    <div className="flex items-center justify-between opacity-50">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-white/10">
+                                <Globe size={20} className="text-white/20" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <div className="h-3 w-24 bg-white/10 rounded" />
+                                <div className="h-2 w-16 bg-white/5 rounded" />
+                            </div>
+                        </div>
+                        <div className="h-8 w-8 rounded-full bg-white/5" />
+                    </div>
+                </div>
+            ) : dailyCompleted ? (
+                 /* COMPLETED STATE (Locked) */
                  <div className="block relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-900/10 p-4 opacity-75 cursor-default">
                     <div className="flex items-center justify-between opacity-80">
                         <div className="flex items-center gap-3">
@@ -312,6 +340,7 @@ export default function Dashboard() {
                     </div>
                 </div>
             ) : (
+                /* ACTIVE STATE */
                 <Link href="/game?mode=Daily" className="block relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-900/10 p-4 transition-all hover:bg-emerald-900/20 group cursor-pointer">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
