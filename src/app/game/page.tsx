@@ -11,13 +11,11 @@ import GameOverModal from "@/components/game/GameOverModal";
 import VictoryModal, { type RewardSummary } from "@/components/game/VictoryModal"; 
 import LevelUpModal from "@/components/progression/LevelUpModal";
 import DailyRewardModal from "@/components/game/DailyRewardModal"; 
-// [NEW] Import Settings Modal
 import GameSettingsModal from "@/components/game/GameSettingsModal";
 import Button from "@/components/ui/Button";
 import { calculateGameRewards } from "@/lib/progression/rewards"; 
 import { RANKS } from "@/lib/progression/constants";
 import { playSfx } from "@/lib/audio"; 
-// [NEW] Settings Icon
 import { Settings } from "lucide-react";
 
 // --- CONFIGURATION RULES ---
@@ -35,7 +33,7 @@ const formatTime = (seconds: number) => {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 };
 
-// [NEW] Helper to Calculate Completed Areas (Row/Col/Box)
+// Helper to Calculate Completed Areas (Row/Col/Box)
 const getCompletedRegions = (board: number[][], solution: number[][]) => {
   const regions = new Set<string>();
   
@@ -95,9 +93,11 @@ function GameContent() {
     maxMistakes,
     refreshPerks,
     showDailyRewardModal,
-    // [NEW] Store Values
+    // VISUALS & INPUT
     inputMode,
-    highlightCompletions
+    highlightCompletions,
+    // [FIXED] Added pushSync here so it can be used below
+    pushSync 
   } = useStore();
 
   const { addHistoryStar, isNodeUnlocked } = useGalaxyStore();
@@ -117,7 +117,6 @@ function GameContent() {
   const [solution, setSolution] = useState<number[][] | null>(null);
   
   const [selectedCell, setSelectedCell] = useState<{ row: number, col: number } | null>(null);
-  // [NEW] Active Number for Digit-First Mode
   const [activeNumber, setActiveNumber] = useState<number | null>(null);
 
   const [mistakes, setMistakes] = useState<number>(0);
@@ -138,7 +137,6 @@ function GameContent() {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [newRankId, setNewRankId] = useState<string | null>(null);
 
-  // [NEW] Settings Modal State
   const [showSettings, setShowSettings] = useState(false);
 
   const isGameOver = currentMaxLives !== Infinity && mistakes >= currentMaxLives;
@@ -160,8 +158,7 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // 2. [NEW] Manage Transient Flash Regions
-  // Only stores regions that *just* completed for 1.5 seconds
+  // 2. Manage Transient Flash Regions
   const [transientRegions, setTransientRegions] = useState<Set<string>>(new Set());
   const prevRegionsRef = useRef<Set<string>>(new Set());
 
@@ -331,8 +328,11 @@ function GameContent() {
       addXp(result.xp); 
       incrementStats(false, activeMode, timeRef.current, mistakes);
       clearGame();
+      
+      // [FIXED] Force Sync Immediate on Game Over
+      pushSync(); 
     }
-  }, [isGameOver, clearGame, activeMode, mistakes, elo, updateElo, addXp, incrementStats]);
+  }, [isGameOver, clearGame, activeMode, mistakes, elo, updateElo, addXp, incrementStats, pushSync]);
 
   // --- TIMERS ---
   useEffect(() => {
@@ -510,6 +510,9 @@ function GameContent() {
         
         setIsWon(true);
         clearGame(); 
+        
+        // [FIXED] Force Sync Immediate on Victory
+        pushSync();
       }
 
     } else {
@@ -528,7 +531,7 @@ function GameContent() {
     isGameActive, selectedCell, boardState, initialBoard, solution, isNoteMode, 
     notes, errorCells, mistakes, saveToHistory, checkVictory, updateElo, clearGame, 
     activeMode, elo, addXp, addCurrency, incrementStats, updateStreak, 
-    autoEraseNotes, addHistoryStar, isNodeUnlocked
+    autoEraseNotes, addHistoryStar, isNodeUnlocked, pushSync
   ]);
 
   const handleCellClick = (row: number, col: number) => {
@@ -631,7 +634,7 @@ function GameContent() {
             </div>
           )}
 
-          {/* [NEW] Settings Button */}
+          {/* Settings Button */}
           <button 
              onClick={() => setShowSettings(true)}
              className="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"
@@ -655,7 +658,6 @@ function GameContent() {
           onCellClick={handleCellClick} 
           errorCells={errorCells}
           notes={notes}
-          // [UPDATED] Pass Transient Regions for flashing
           transientRegions={highlightCompletions ? transientRegions : undefined}
           activeNumber={activeNumber}
         />

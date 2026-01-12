@@ -5,45 +5,66 @@ import dbConnect from "@/lib/db/connect";
 import User from "@/lib/db/models/User";
 
 export async function POST() {
-  const session = await getServerSession(authOptions);
-
-  if (!session || !session.user?.email) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   try {
+    const session = await getServerSession(authOptions);
+
+    if (!session || !session.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     await dbConnect();
 
     // 1. HARD RESET (Explicitly set every field to its default)
-    await User.updateOne(
+    // We use findOneAndUpdate with $set to replace entire sub-documents
+    // ensuring we wipe new timestamp fields and any stray data.
+    await User.findOneAndUpdate(
       { email: session.user.email },
       {
         $set: {
-          // Progression
-          "progression.elo": 1000,
-          "progression.xp": 0,
-          "progression.rank": "Novice", // Reset rank too
-          "progression.stardust": 0,
-          "progression.cometShards": 0,
-          "progression.unlockedThemes": ['midnight'],
+          // 1. Progression & Timestamps
+          progression: {
+            elo: 1000,
+            eloLastUpdated: 0,
+            xp: 0,
+            xpLastUpdated: 0,
+            rank: "Novice",
+            stardust: 0,
+            cometShards: 0,
+            currencyLastUpdated: 0,
+            unlockedThemes: ["midnight"],
+            themesLastUpdated: 0,
+          },
           
-          // Stats
-          "stats.gamesPlayed": 0,
-          "stats.gamesWon": 0,
-          "stats.flawlessWins": 0,
-          "stats.currentStreak": 0,
-          "stats.lastPlayedDate": null,
-          
-          // Best Times (Reset to null)
-          "stats.bestTimeRelaxed": null,
-          "stats.bestTimeStandard": null,
-          "stats.bestTimeMastery": null,
+          // 2. Stats & Timestamps
+          stats: {
+            gamesPlayed: 0,
+            gamesWon: 0,
+            flawlessWins: 0,
+            currentStreak: 0,
+            lastPlayedDate: null,
+            bestTimeRelaxed: null,
+            bestTimeStandard: null,
+            bestTimeMastery: null,
+            statsLastUpdated: 0,
+          },
 
-          // Settings (Optional: Resetting these gives a true "Fresh" feel)
-          "settings.activeThemeId": "midnight",
-          "settings.audioEnabled": true,
-          "settings.timerVisible": true,
-          "settings.autoEraseNotes": true,
+          // 3. Settings (Including new visual/input preferences)
+          settings: {
+            activeThemeId: "midnight",
+            audioEnabled: true,
+            timerVisible: true,
+            autoEraseNotes: true,
+            inputMode: "cell-first",
+            textSize: "standard",
+            highlightCompletions: true,
+            settingsLastUpdated: 0,
+          },
+
+          // 4. Galaxy Data
+          galaxy: {
+            unlockedNodeIds: ['sun'],
+            historyStars: []
+          },
 
           lastSyncedAt: new Date(),
         },

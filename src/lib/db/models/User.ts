@@ -9,11 +9,19 @@ const UserSchema = new mongoose.Schema({
   progression: {
     // [OPTIMIZATION] Indexing ELO allows instant sorting of leaderboards
     elo: { type: Number, default: 1000, index: true },
+    eloLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
+    
     xp: { type: Number, default: 0 },
+    xpLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
+    
     rank: { type: String, default: "Novice" },
+    
     stardust: { type: Number, default: 0 },
     cometShards: { type: Number, default: 0 },
+    currencyLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
+    
     unlockedThemes: { type: [String], default: ["midnight"] },
+    themesLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
   },
 
   // 2. STATISTICS (The "Archives")
@@ -29,6 +37,8 @@ const UserSchema = new mongoose.Schema({
     bestTimeRelaxed: { type: Number, default: null },
     bestTimeStandard: { type: Number, default: null },
     bestTimeMastery: { type: Number, default: null },
+    
+    statsLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
   },
 
   // 3. SETTINGS & PREFERENCES
@@ -37,9 +47,16 @@ const UserSchema = new mongoose.Schema({
     audioEnabled: { type: Boolean, default: true },
     timerVisible: { type: Boolean, default: true },
     autoEraseNotes: { type: Boolean, default: true },
+    
+    // [NEW] Persist Visual/Input Settings
+    inputMode: { type: String, default: 'cell-first' },
+    textSize: { type: String, default: 'standard' },
+    highlightCompletions: { type: Boolean, default: true },
+    
+    settingsLastUpdated: { type: Number, default: 0 }, // [NEW] Timestamp for Sync
   },
 
-  // 4. [NEW] GALAXY DATA (Astral Chart)
+  // 4. GALAXY DATA (Astral Chart)
   galaxy: {
     unlockedNodeIds: { type: [String], default: ['sun'] }, // e.g. ['sun', 'mercury']
     historyStars: [{
