@@ -3,46 +3,90 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import dbConnect from "@/lib/db/connect";
 import User from "@/lib/db/models/User";
+import DailyScore from "@/lib/db/models/DailyScore"; // [NEW]
 
-export const dynamic = 'force-dynamic'; // Disable static caching for live rankings
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     await dbConnect();
     const session = await getServerSession(authOptions);
-    const currentUserEmail = session?.user?.email;
+    
+    // [NEW] Get Query Params (all-time vs daily)
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get('type') || 'all-time';
 
-    // 1. FETCH TOP 10 (The Apex)
-    // We select only necessary fields to save bandwidth
-    const topPlayers = await User.find({})
-      .sort({ "progression.elo": -1 }) // Descending order (Highest first)
-      .limit(10)
-      .select("name image progression.elo progression.xp");
+    // 1. ALL-TIME (ELO)
+    if (type === 'all-time') {
+        const topPlayers = await User.find({ "stats.gamesPlayed": { $gt: 0 } })
+          .sort({ "progression.elo": -1 })
+          .limit(50) // Increased limit for scrolling
+          .select("name image progression.elo progression.xp");
 
-    // 2. FETCH CURRENT USER RANK (The Anchor)
-    let userRankData = null;
-
-    if (currentUserEmail) {
-      const currentUser = await User.findOne({ email: currentUserEmail }).select("progression.elo");
-      
-      if (currentUser) {
-        // Count how many people have a higher ELO than the current user
-        const rank = await User.countDocuments({
-          "progression.elo": { $gt: currentUser.progression.elo }
-        });
-
-        userRankData = {
-          rank: rank + 1, // 0-indexed count -> 1-indexed rank
-          elo: currentUser.progression.elo,
-          isInTop10: rank < 10 // Helper to hide sticky footer if you're already visible
-        };
-      }
+        let userRankData = null;
+        if (session?.user?.email) {
+            const currentUser = await User.findOne({ email: session.user.email }).select("progression.elo");
+            if (currentUser) {
+                const rank = await User.countDocuments({
+                    "progression.elo": { $gt: currentUser.progression.elo },
+                    "stats.gamesPlayed": { $gt: 0 }
+                });
+                userRankData = {
+                    rank: rank + 1,
+                    elo: currentUser.progression.elo,
+                    isInTop10: rank < 50
+                };
+            }
+        }
+        return NextResponse.json({ topPlayers, userRank: userRankData });
     }
 
-    return NextResponse.json({
-      topPlayers,
-      userRank: userRankData
-    });
+    // 2. DAILY (Time)
+    if (type === 'daily') {
+        // Get Today's Date String (UTC)
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Find top scores for TODAY, sorted by TIME (Ascending)
+        const topDaily = await DailyScore.find({ date: today })
+            .sort({ timeSeconds: 1, mistakes: 1 }) // Fastest time, then fewest mistakes
+            .limit(50);
+
+        // Map to match the frontend 'LeaderboardEntry' shape
+        const formattedDaily = topDaily.map((entry: any) => ({
+            _id: entry.userId.toString(),
+            name: entry.username,
+            image: entry.userImage,
+            progression: {
+                // For daily view, we display Time instead of ELO
+                elo: entry.timeSeconds, // Using 'elo' field to carry Time data to frontend
+                xp: 0 // Irrelevant for daily
+            },
+            isDaily: true // Flag to tell frontend to format 'elo' as Time
+        }));
+
+        let userRankData = null;
+        if (session?.user?.email) {
+            const currentUser = await User.findOne({ email: session.user.email });
+            if (currentUser) {
+                const myEntry = await DailyScore.findOne({ userId: currentUser._id, date: today });
+                if (myEntry) {
+                    const rank = await DailyScore.countDocuments({
+                        date: today,
+                        timeSeconds: { $lt: myEntry.timeSeconds }
+                    });
+                    userRankData = {
+                        rank: rank + 1,
+                        elo: myEntry.timeSeconds,
+                        isInTop10: rank < 50
+                    };
+                }
+            }
+        }
+
+        return NextResponse.json({ topPlayers: formattedDaily, userRank: userRankData });
+    }
+
+    return NextResponse.json({ error: "Invalid type" }, { status: 400 });
 
   } catch (error) {
     console.error("Leaderboard API Error:", error);

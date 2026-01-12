@@ -3,11 +3,11 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
-import { useSession } from "next-auth/react"; // <--- IMPORT SESSION
+import { useSession } from "next-auth/react";
 import Button from "@/components/ui/Button";
 import { 
   Play, Lock, Zap, Clock, Trophy, Star, Sparkles, 
-  ShoppingBag, Settings, AlertCircle, Telescope, Palette 
+  Settings, AlertCircle, Telescope, Palette, Globe 
 } from "lucide-react";
 import RankBadge from "@/components/progression/RankBadge";
 import XpProgressBar from "@/components/progression/XpProgressBar";
@@ -47,7 +47,6 @@ const StatSkeleton = () => (
 );
 
 export default function Dashboard() {
-  // 1. GET SESSION (To fix 401 Error)
   const { status } = useSession();
   const isLoggedIn = status === "authenticated";
 
@@ -66,11 +65,13 @@ export default function Dashboard() {
 
   const [showRankInfo, setShowRankInfo] = useState(false);
   const [mounted, setMounted] = useState(false);
+  
+  // Daily Completion State
+  const [dailyCompleted, setDailyCompleted] = useState(false);
 
   // LOGIC
   const isMasteryLocked = xp < 1500;
-  const isShopUnlocked = xp >= 500; // Keep Shop locked for Seekers
-  // CHANGE: Galaxy is ALWAYS unlocked now so new players can see history stars
+  const isShopUnlocked = xp >= 500; 
   const isGalaxyUnlocked = true; 
 
   const today = new Date().toISOString().split('T')[0];
@@ -81,12 +82,24 @@ export default function Dashboard() {
   useEffect(() => {
     setMounted(true);
     
-    // FIX: Only sync if User is Logged In
+    // 1. Sync on Focus
     const onFocus = () => {
       if (isLoggedIn) {
          pushSync();
       }
     };
+
+    // 2. [UPDATED] Check Real Daily Status
+    if (isLoggedIn) {
+      fetch('/api/daily/status')
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.completed) {
+            setDailyCompleted(true);
+          }
+        })
+        .catch((err) => console.error("Failed to check daily status:", err));
+    }
 
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
@@ -213,8 +226,6 @@ export default function Dashboard() {
 
             {/* 2. THE META-HUB (Split: Shop vs Map) */}
             <div className="grid grid-cols-2 gap-3 w-full pt-1">
-                
-                {/* SHOP BUTTON (Locked until Seeker) */}
                 {mounted && isShopUnlocked ? (
                   <Link href="/observatory" className="block w-full">
                     <button className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-br from-indigo-500/10 to-purple-900/10 border border-indigo-500/20 hover:border-indigo-400/40 hover:from-indigo-500/20 hover:to-purple-900/20 transition-all group">
@@ -233,7 +244,6 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* ASTRAL CHART BUTTON (Always Unlocked) */}
                 {mounted && isGalaxyUnlocked ? (
                   <Link href="/astral" className="block w-full">
                     <button className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-gradient-to-br from-cyan-500/10 to-blue-900/10 border border-cyan-500/20 hover:border-cyan-400/40 hover:from-cyan-500/20 hover:to-blue-900/20 transition-all group">
@@ -244,7 +254,6 @@ export default function Dashboard() {
                     </button>
                   </Link>
                 ) : (
-                  // Fallback if we ever want to lock it again
                   <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-50 cursor-not-allowed">
                     <Lock size={16} className="text-white/40" />
                     <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Galaxy</span>
@@ -275,7 +284,6 @@ export default function Dashboard() {
               </div>
             </Link>
             
-            {/* Divider */}
             <div className="flex items-center gap-2 py-2 opacity-50">
                <div className="h-px bg-white/10 flex-1"/>
                <span className="text-[10px] text-white/40 uppercase tracking-widest">OR</span>
@@ -284,10 +292,49 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* 4. DIFFICULTY SELECTOR (Unchanged) */}
-        <div className="w-full space-y-3">
+        {/* 4. DAILY CHALLENGE CARD */}
+        <div className="w-full">
+            {dailyCompleted ? (
+                 <div className="block relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-900/10 p-4 opacity-75 cursor-default">
+                    <div className="flex items-center justify-between opacity-80">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-emerald-500/20 text-emerald-400">
+                                <Clock size={20} />
+                            </div>
+                            <div>
+                                <h3 className="text-emerald-100 font-bold text-sm uppercase tracking-wide line-through decoration-emerald-500/50">Daily Challenge</h3>
+                                <p className="text-[10px] text-emerald-200/60 uppercase tracking-widest">Completed</p>
+                            </div>
+                        </div>
+                        <div className="px-3 py-1 bg-emerald-500/20 rounded-full text-xs font-mono font-bold text-emerald-400">
+                            DONE
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <Link href="/game?mode=Daily" className="block relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-emerald-900/10 p-4 transition-all hover:bg-emerald-900/20 group cursor-pointer">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-emerald-500/20 text-emerald-400 group-hover:scale-110 transition-transform">
+                                <Globe size={20} className="animate-spin-slow" />
+                            </div>
+                            <div>
+                                <h3 className="text-emerald-100 font-bold text-sm uppercase tracking-wide group-hover:text-emerald-50 transition-colors">Daily Challenge</h3>
+                                <p className="text-[10px] text-emerald-200/60 uppercase tracking-widest group-hover:text-emerald-200/80">Compete Globally</p>
+                            </div>
+                        </div>
+                        <div className="h-8 w-8 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/30 group-hover:bg-emerald-500 group-hover:text-white transition-all">
+                            <Play size={14} className="fill-current ml-0.5" />
+                        </div>
+                    </div>
+                </Link>
+            )}
+        </div>
+
+        {/* 5. DIFFICULTY SELECTOR */}
+        <div className="w-full space-y-3 mt-4">
           <p className="text-xs text-white/30 font-sans uppercase tracking-widest text-center mb-2">
-            Initialize New Protocol
+            Initialize Standard Protocol
           </p>
 
           <button
@@ -352,7 +399,7 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* 5. START BUTTON (With Warnings) */}
+        {/* 6. START BUTTON (With Warnings) */}
         <div className="w-full pt-2">
           <Link href={`/game?mode=${themeDifficulty}`} className="block w-full">
               <Button 
@@ -372,7 +419,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* DEV ONLY: CHEAT BUTTON */}
         {mounted && process.env.NODE_ENV === 'development' && (
           <button 
            onClick={() => useStore.setState({ stardust: 20000, cometShards: 100 })}

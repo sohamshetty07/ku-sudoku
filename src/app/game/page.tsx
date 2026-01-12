@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation"; 
-import { generateSudoku } from "@/lib/sudoku/generator";
+// [UPDATED] Import generateDailyBoard
+import { generateSudoku, generateDailyBoard } from "@/lib/sudoku/generator";
 import { useStore, type GameState } from "@/lib/store"; 
 import { useGalaxyStore } from "@/lib/store/galaxy"; 
 import SudokuGrid from "@/components/game/SudokuGrid";
@@ -23,6 +24,8 @@ const GAME_CONFIG = {
   Relaxed:  { holes: 30, parTime: 600 },
   Standard: { holes: 40, parTime: 300 },
   Mastery:  { holes: 55, parTime: 900 },
+  // [NEW] Daily Configuration
+  Daily:    { holes: 40, parTime: 450 }, 
 };
 
 type GameMode = keyof typeof GAME_CONFIG;
@@ -96,19 +99,21 @@ function GameContent() {
     // VISUALS & INPUT
     inputMode,
     highlightCompletions,
-    // [FIXED] Added pushSync here so it can be used below
     pushSync 
   } = useStore();
 
   const { addHistoryStar, isNodeUnlocked } = useGalaxyStore();
 
   const rawMode = searchParams.get("mode");
+  // [UPDATED] Check if rawMode matches any key in GAME_CONFIG (including Daily)
   const searchMode: GameMode = (rawMode && rawMode in GAME_CONFIG) 
     ? (rawMode as GameMode) 
     : "Standard";
 
   const [activeMode, setActiveMode] = useState<GameMode>(searchMode);
-  const currentMaxLives = activeMode === 'Relaxed' ? Infinity : (activeMode === 'Standard' ? maxMistakes : 2);
+  
+  // Daily Mode typically allows mistakes, but we can stick to Standard rules (3 strikes) or make it stricter
+  const currentMaxLives = activeMode === 'Relaxed' ? Infinity : (activeMode === 'Mastery' ? 2 : maxMistakes);
 
   // --- STATE ---
   const [mounted, setMounted] = useState(false);
@@ -143,8 +148,6 @@ function GameContent() {
   const isGameActive = !isGameOver && !isWon;
 
   // --- DERIVED STATE ---
-  
-  // 1. Completed Numbers (1-9)
   const completedNumbers = useMemo(() => {
     if (!boardState || !solution) return [];
     const counts = new Array(10).fill(0);
@@ -158,11 +161,9 @@ function GameContent() {
     return counts.map((count, num) => (count === 9 ? num : -1)).filter(n => n !== -1);
   }, [boardState, solution]);
 
-  // 2. Manage Transient Flash Regions
   const [transientRegions, setTransientRegions] = useState<Set<string>>(new Set());
   const prevRegionsRef = useRef<Set<string>>(new Set());
 
-  // 3. Effect for Completion Sound & Transient Glow
   const completedRegions = useMemo(() => {
     if (!boardState || !solution) return new Set<string>();
     return getCompletedRegions(boardState, solution);
@@ -172,21 +173,16 @@ function GameContent() {
     const current = completedRegions;
     const prev = prevRegionsRef.current;
 
-    // Detect new completions
     if (current.size > prev.size) {
         const diff = new Set([...current].filter(x => !prev.has(x)));
         
         if (diff.size > 0 && highlightCompletions && isGameActive && mounted) {
             playSfx('chord'); 
-            
-            // Trigger transient flash
             setTransientRegions(prevTr => {
                 const next = new Set(prevTr);
                 diff.forEach(d => next.add(d));
                 return next;
             });
-
-            // Remove flash after animation completes (matches CSS 1.5s)
             setTimeout(() => {
                  setTransientRegions(prevTr => {
                     const next = new Set(prevTr);
@@ -207,7 +203,10 @@ function GameContent() {
   }, [refreshPerks]);
 
   useEffect(() => {
-    setThemeDifficulty(activeMode);
+    // If Daily, maybe map it to 'Mastery' theme or keep 'Standard'
+    // For now, mapping 'Daily' difficulty to 'Standard' theme visual
+    const visualDiff = activeMode === 'Daily' ? 'Standard' : activeMode;
+    setThemeDifficulty(visualDiff as any);
   }, [activeMode, setThemeDifficulty]);
 
   const startNewGame = useCallback(() => {
@@ -217,7 +216,8 @@ function GameContent() {
 
     if (shouldResume && savedGame) {
       console.log("Resuming saved game...");
-      setActiveMode(savedGame.difficulty);
+      // Cast difficulty safely in case saved game has old type
+      setActiveMode(savedGame.difficulty as GameMode);
       setInitialBoard(savedGame.initialBoard);
       setSolution(savedGame.solution);
       setBoardState(savedGame.boardState);
@@ -239,18 +239,32 @@ function GameContent() {
       setShowLevelUp(false); 
       prevRegionsRef.current = new Set();
     } else {
-      console.log("Generating new game client-side...");
+      console.log(`Generating new ${searchMode} game...`);
       setActiveMode(searchMode); 
       
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
         storeState.updateElo(-5);
       }
 
-      const { initial, solved } = generateSudoku(GAME_CONFIG[searchMode].holes);
+      // [UPDATED] Daily vs Standard Generation
+      let initialGrid, solvedGrid;
       
-      setInitialBoard(initial);
-      setSolution(solved);
-      setBoardState(initial.map(row => [...row]));
+      if (searchMode === 'Daily') {
+          // Generate deterministic board based on today's date
+          const todayStr = new Date().toISOString().split('T')[0]; // "2024-05-20"
+          const result = generateDailyBoard(todayStr);
+          initialGrid = result.initial;
+          solvedGrid = result.solved;
+      } else {
+          // Standard Random Generation
+          const result = generateSudoku(GAME_CONFIG[searchMode].holes);
+          initialGrid = result.initial;
+          solvedGrid = result.solved;
+      }
+      
+      setInitialBoard(initialGrid);
+      setSolution(solvedGrid);
+      setBoardState(initialGrid.map(row => [...row]));
       setMistakes(0);
       setErrorCells(new Set());
       setNotes({});
@@ -287,7 +301,10 @@ function GameContent() {
         history,
         mistakes,
         timeElapsed: timeRef.current, 
-        difficulty: activeMode,
+        // Cast Daily back to Standard for type safety if needed, 
+        // OR update GameState interface to include 'Daily'.
+        // For now, we assume GameState.difficulty supports 'Daily' (updated in Step 1 of phase 4)
+        difficulty: activeMode, 
         cellTimes: cellTimesRef.current,
         isGameOver, 
         isWon
@@ -316,8 +333,11 @@ function GameContent() {
   useEffect(() => {
     if (isGameOver) {
       playSfx('gameover'); 
+      // NOTE: Daily Challenge failure could potentially just end the run 
+      // without affecting ELO heavily, or treat it like Standard. 
+      // Treating as Standard for now.
       const result = calculateGameRewards({
-        mode: activeMode,
+        mode: activeMode === 'Daily' ? 'Standard' : activeMode,
         timeElapsed: timeRef.current,
         mistakes,
         isWin: false,
@@ -326,10 +346,9 @@ function GameContent() {
 
       updateElo(result.eloChange);
       addXp(result.xp); 
-      incrementStats(false, activeMode, timeRef.current, mistakes);
+      incrementStats(false, activeMode === 'Daily' ? 'Standard' : activeMode, timeRef.current, mistakes);
       clearGame();
       
-      // [FIXED] Force Sync Immediate on Game Over
       pushSync(); 
     }
   }, [isGameOver, clearGame, activeMode, mistakes, elo, updateElo, addXp, incrementStats, pushSync]);
@@ -458,16 +477,35 @@ function GameContent() {
       if (checkVictory(newBoard, solution)) {
         playSfx('victory'); 
         
+        // 1. Calculate Rewards (Standard Logic)
         const baseRewards = calculateGameRewards({
-          mode: activeMode,
+          mode: activeMode === 'Daily' ? 'Standard' : activeMode,
           timeElapsed: timeRef.current,
           mistakes,
           isWin: true,
           currentElo: elo
         });
 
-        addHistoryStar();
+        // 2. [NEW] DAILY CHALLENGE SUBMISSION
+        if (activeMode === 'Daily') {
+            const todayStr = new Date().toISOString().split('T')[0];
+            
+            // Fire and forget submission
+            fetch('/api/daily/submit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: todayStr,
+                    timeSeconds: timeRef.current,
+                    mistakes: mistakes
+                })
+            }).then(res => res.json())
+              .then(data => console.log("Daily Submitted:", data))
+              .catch(err => console.error("Daily Submit Failed", err));
+        }
 
+        // 3. Apply Local Progression
+        addHistoryStar();
         updateElo(baseRewards.eloChange);
         addXp(baseRewards.xp); 
         addCurrency('stardust', baseRewards.stardust);
@@ -475,7 +513,7 @@ function GameContent() {
             addCurrency('cometShards', baseRewards.cometShards);
         }
         
-        incrementStats(true, activeMode, timeRef.current, mistakes);
+        incrementStats(true, activeMode === 'Daily' ? 'Standard' : activeMode, timeRef.current, mistakes);
         updateStreak(); 
 
         const bonuses: string[] = [...(baseRewards.bonuses || [])];
@@ -511,7 +549,7 @@ function GameContent() {
         setIsWon(true);
         clearGame(); 
         
-        // [FIXED] Force Sync Immediate on Victory
+        // 4. Force Sync
         pushSync();
       }
 
@@ -605,7 +643,6 @@ function GameContent() {
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000"
     >
-      {/* 1. MODALS */}
       {showDailyRewardModal && <DailyRewardModal />}
       {showLevelUp && newRankId && <LevelUpModal newRankId={newRankId} onClose={() => setShowLevelUp(false)} />}
       {isGameOver && <GameOverModal onRetry={startNewGame} />}
@@ -634,7 +671,6 @@ function GameContent() {
             </div>
           )}
 
-          {/* Settings Button */}
           <button 
              onClick={() => setShowSettings(true)}
              className="p-2 rounded-full hover:bg-white/10 text-white/50 hover:text-white transition-colors"

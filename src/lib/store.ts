@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useGalaxyStore } from '@/lib/store/galaxy'; 
 
-// [NEW] Transaction Types for robustness
+// Transaction Types for robustness
 export type Transaction = {
   id: string; // UUID to prevent double-processing
   type: 'SPEND_CURRENCY' | 'EARN_CURRENCY' | 'UNLOCK_THEME';
@@ -18,7 +18,8 @@ export interface GameState {
   history: { board: number[][]; notes: Record<string, number[]> }[];
   mistakes: number;
   timeElapsed: number;
-  difficulty: 'Relaxed' | 'Standard' | 'Mastery';
+  // [UPDATED] Added 'Daily' to Difficulty Type
+  difficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily';
   cellTimes: Record<string, number>; 
   isGameOver?: boolean;
   isWon?: boolean;
@@ -30,7 +31,7 @@ interface UserStore {
   isDirty: boolean;
   setHasHydrated: (val: boolean) => void;
 
-  // [NEW] TRANSACTION QUEUE
+  // TRANSACTION QUEUE
   pendingTransactions: Transaction[];
   clearProcessedTransactions: (processedIds: string[]) => void;
 
@@ -47,7 +48,7 @@ interface UserStore {
   stardust: number;
   cometShards: number;
   currencyLastUpdated: number;
-  // [UPDATED] Robust Currency Actions
+  // Robust Currency Actions
   addCurrency: (type: 'stardust' | 'cometShards', amount: number) => void;
   spendCurrency: (type: 'stardust' | 'cometShards', amount: number) => boolean; // Returns success/fail
 
@@ -65,7 +66,7 @@ interface UserStore {
     Mastery: number | null;
   };
   statsLastUpdated: number;
-  incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery', time: number, mistakes: number) => void;
+  incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily', time: number, mistakes: number) => void;
 
   // 4. GAME STATE
   activeGame: GameState | null;
@@ -81,8 +82,9 @@ interface UserStore {
   closeDailyRewardModal: () => void;
 
   // VISUALS
-  themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery';
-  setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery') => void;
+  // [UPDATED] Added 'Daily' to Theme Difficulty
+  themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily';
+  setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily') => void;
   activeThemeId: string;
   setActiveTheme: (themeId: string) => void;
 
@@ -262,18 +264,29 @@ export const useStore = create<UserStore>()(
           const isFlawless = mistakes === 0;
           const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
 
-          const currentBest = state.bestTimes[mode];
-          let newBestTime = currentBest;
-          if (currentBest === null || time < currentBest) {
-            newBestTime = time;
+          // Only track best times for standard modes, ignore Daily for local bests if desired
+          // or add logic to handle Daily separately. For now, we skip Daily best times in local store
+          // as they are tracked on the server leaderboard.
+          if (mode !== 'Daily') {
+              const currentBest = state.bestTimes[mode];
+              let newBestTime = currentBest;
+              if (currentBest === null || time < currentBest) {
+                newBestTime = time;
+              }
+              updates = {
+                ...updates,
+                gamesWon: newGamesWon,
+                flawlessWins: newFlawlessWins,
+                bestTimes: { ...state.bestTimes, [mode]: newBestTime }
+              };
+          } else {
+              // Just update wins without best time logic for Daily
+               updates = {
+                ...updates,
+                gamesWon: newGamesWon,
+                flawlessWins: newFlawlessWins,
+              };
           }
-
-          updates = {
-            ...updates,
-            gamesWon: newGamesWon,
-            flawlessWins: newFlawlessWins,
-            bestTimes: { ...state.bestTimes, [mode]: newBestTime }
-          };
         }
 
         return {

@@ -1,14 +1,18 @@
 "use client";
 import React, { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Crown, Medal, User as UserIcon, RefreshCw, Trophy, ShieldAlert } from "lucide-react";
+import { 
+  ArrowLeft, Crown, Medal, User as UserIcon, 
+  RefreshCw, Trophy, ShieldAlert, Globe, Clock 
+} from "lucide-react";
 
 type LeaderboardEntry = {
   _id: string;
   name: string;
   image?: string;
+  isDaily?: boolean; // [NEW] Flag to determine formatting
   progression: {
-    elo: number;
+    elo: number; // Holds ELO or Time (in seconds) depending on mode
     xp: number;
   };
 };
@@ -19,24 +23,38 @@ type UserRank = {
   isInTop10: boolean;
 };
 
+// [NEW] Helper to format seconds to MM:SS
+const formatTime = (seconds: number) => {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 export default function LeaderboardPage() {
   const [leaders, setLeaders] = useState<LeaderboardEntry[]>([]);
   const [userRank, setUserRank] = useState<UserRank | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // [NEW] View Mode State
+  const [viewMode, setViewMode] = useState<'all-time' | 'daily'>('all-time');
 
   // 1. ROBUST DATA FETCHING
   const fetchLeaderboard = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch("/api/leaderboard", { cache: 'no-store' });
+      // [UPDATED] Pass viewMode to API
+      const res = await fetch(`/api/leaderboard?type=${viewMode}`, { cache: 'no-store' });
       if (!res.ok) throw new Error("API Error");
       
       const data = await res.json();
       if (data.topPlayers) setLeaders(data.topPlayers);
-      if (data.userRank) setUserRank(data.userRank);
+      
+      // Handle user rank separately or null it if not present
+      setUserRank(data.userRank || null);
+      
     } catch (err) {
       console.error("Failed to load leaderboard", err);
       setError(true);
@@ -44,7 +62,7 @@ export default function LeaderboardPage() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [viewMode]); // [UPDATED] Re-fetch when mode changes
 
   useEffect(() => {
     fetchLeaderboard();
@@ -60,11 +78,8 @@ export default function LeaderboardPage() {
       
       {/* --- DYNAMIC BACKGROUND LAYERS --- */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-          {/* Top Left - Indigo Pulse */}
           <div className="absolute top-[-10%] left-[-20%] w-[600px] h-[600px] bg-indigo-600/20 rounded-full blur-[120px] animate-pulse-slow" />
-          {/* Bottom Right - Cyan Glow */}
           <div className="absolute bottom-[-10%] right-[-20%] w-[500px] h-[500px] bg-cyan-600/10 rounded-full blur-[100px]" />
-          {/* Center - Subtle Void */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-[radial-gradient(circle_at_center,transparent_0%,#0F172A_100%)] opacity-80" />
       </div>
 
@@ -85,14 +100,32 @@ export default function LeaderboardPage() {
                     <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em] font-bold">Global Rankings</p>
                 </div>
             </div>
-            
-            <button 
-                onClick={handleRefresh}
-                disabled={isRefreshing}
-                className={`p-2 rounded-full hover:bg-white/10 text-white/40 hover:text-white transition-all ${isRefreshing ? 'animate-spin' : ''}`}
-            >
-                <RefreshCw size={20} />
-            </button>
+
+            <div className="flex items-center gap-2">
+                {/* [NEW] TOGGLE SWITCH */}
+                <div className="flex bg-slate-800/50 rounded-lg p-1 border border-white/5 mr-2">
+                    <button 
+                        onClick={() => setViewMode('all-time')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'all-time' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Globe size={14} /> <span className="hidden sm:inline">Global</span>
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('daily')}
+                        className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${viewMode === 'daily' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Clock size={14} /> <span className="hidden sm:inline">Daily</span>
+                    </button>
+                </div>
+                
+                <button 
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className={`p-2 rounded-full hover:bg-white/10 text-white/40 hover:text-white transition-all ${isRefreshing ? 'animate-spin' : ''}`}
+                >
+                    <RefreshCw size={20} />
+                </button>
+            </div>
         </div>
       </div>
 
@@ -174,7 +207,6 @@ export default function LeaderboardPage() {
                         ${cardStyle}
                     `}
                 >
-                    {/* Visual Flare for Rank 1 */}
                     {isRank1 && (
                         <div className="absolute top-0 right-0 p-2 opacity-20">
                             <Crown size={64} className="text-amber-500 rotate-12" />
@@ -182,7 +214,7 @@ export default function LeaderboardPage() {
                     )}
 
                     <div className="flex items-center gap-4 relative z-10">
-                        {/* RANK INDICATOR */}
+                        {/* RANK */}
                         <div className={`
                             w-10 h-10 flex items-center justify-center font-mono font-bold text-xl
                             ${rankColor} ${glow}
@@ -193,7 +225,7 @@ export default function LeaderboardPage() {
                              <span className="opacity-40 text-sm">#{rank}</span>}
                         </div>
                         
-                        {/* AVATAR + NAME */}
+                        {/* USER INFO */}
                         <div className="flex items-center gap-3">
                             <div className={`
                                 w-10 h-10 rounded-full overflow-hidden border
@@ -212,18 +244,28 @@ export default function LeaderboardPage() {
                                     {player.name || `Seeker ${player._id.slice(-4)}`}
                                 </div>
                                 <div className="text-[10px] text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                                    {getRankTitle(player.progression.elo)}
+                                    {/* [UPDATED] Show Rank Title only in All-Time Mode */}
+                                    {viewMode === 'all-time' 
+                                        ? getRankTitle(player.progression.elo) 
+                                        : "Daily Challenger"
+                                    }
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* ELO SCORE */}
+                    {/* SCORE (ELO or TIME) */}
                     <div className="text-right relative z-10">
-                        <div className={`font-mono font-bold ${isRank1 ? 'text-amber-400' : 'text-neon-cyan'}`}>
-                            {player.progression.elo}
+                        <div className={`font-mono font-bold ${isRank1 ? 'text-amber-400' : (viewMode === 'daily' ? 'text-emerald-400' : 'text-neon-cyan')}`}>
+                            {/* [UPDATED] Format score based on mode */}
+                            {player.isDaily 
+                                ? formatTime(player.progression.elo) 
+                                : player.progression.elo
+                            }
                         </div>
-                        <div className="text-[10px] text-slate-600 uppercase font-bold tracking-widest">ELO</div>
+                        <div className="text-[10px] text-slate-600 uppercase font-bold tracking-widest">
+                            {viewMode === 'daily' ? 'TIME' : 'ELO'}
+                        </div>
                     </div>
                 </div>
             );
@@ -231,16 +273,14 @@ export default function LeaderboardPage() {
 
       </div>
 
-      {/* --- STICKY USER RANK (The Anchor) --- */}
+      {/* --- STICKY USER RANK --- */}
       {!loading && !error && userRank && !userRank.isInTop10 && (
           <div className="fixed bottom-0 left-0 w-full z-40">
-              {/* Glass Blur Gradient for smooth fade behind */}
               <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#0F172A] via-[#0F172A]/90 to-transparent pointer-events-none" />
               
               <div className="relative pb-[calc(1rem+env(safe-area-inset-bottom))] px-4 pt-4">
                 <div className="max-w-xl mx-auto flex items-center justify-between p-4 bg-indigo-500/10 backdrop-blur-md border border-indigo-500/30 rounded-2xl shadow-[0_0_30px_rgba(0,0,0,0.5)] relative overflow-hidden group">
                     
-                    {/* Animated Glow Border */}
                     <div className="absolute inset-0 bg-indigo-400/5 animate-pulse-slow" />
                     
                     <div className="flex items-center gap-4 relative z-10">
@@ -259,9 +299,11 @@ export default function LeaderboardPage() {
 
                     <div className="relative z-10 text-right">
                         <div className="font-mono font-bold text-white text-lg">
-                            {userRank.elo}
+                            {viewMode === 'daily' ? formatTime(userRank.elo) : userRank.elo}
                         </div>
-                        <div className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">ELO</div>
+                        <div className="text-[10px] text-indigo-300 uppercase font-bold tracking-widest">
+                            {viewMode === 'daily' ? 'TIME' : 'ELO'}
+                        </div>
                     </div>
                 </div>
               </div>

@@ -11,7 +11,6 @@ interface SudokuGridProps {
   onCellClick: (row: number, col: number) => void;
   errorCells: Set<string>;
   notes: Record<string, number[]>;
-  // [UPDATED] Use transientRegions to handle the one-time flash logic
   transientRegions?: Set<string>; 
   activeNumber?: number | null;
 }
@@ -23,17 +22,14 @@ export default function SudokuGrid({
   onCellClick,
   errorCells,
   notes,
-  transientRegions, // [UPDATED]
+  transientRegions,
   activeNumber
 }: SudokuGridProps) {
-  // Get Active Theme & Text Settings
   const { activeThemeId, textSize } = useStore();
   const theme = getThemeById(activeThemeId);
 
   if (!boardState || !initialBoard) return null;
 
-  // Determine which number to highlight
-  // Priority: Active Number (Digit-First) -> Selected Cell's Value (Standard) -> Null
   const highlightValue = activeNumber ?? (
     selectedCell && boardState[selectedCell.row][selectedCell.col] !== 0
       ? boardState[selectedCell.row][selectedCell.col]
@@ -51,16 +47,13 @@ export default function SudokuGrid({
           const isFixed = initialBoard[rowIndex][colIndex] !== 0;
           const isSelected = selectedCell?.row === rowIndex && selectedCell?.col === colIndex;
           const isError = errorCells.has(`${rowIndex}-${colIndex}`);
-          
-          // Related highlighting now uses the calculated highlightValue
           const isSameValue = highlightValue !== null && cellValue === highlightValue && !isSelected;
 
           const isRelated = selectedCell 
             ? (selectedCell.row === rowIndex || selectedCell.col === colIndex) && !isSelected
             : false;
 
-          // [UPDATED] Check Transient Completion (Flash) Status
-          // We check if this cell belongs to a region that JUST completed
+          // Check Flash Status
           let isFlashing = false;
           if (transientRegions) {
              const rKey = `row-${rowIndex}`;
@@ -71,7 +64,7 @@ export default function SudokuGrid({
              }
           }
 
-          // --- BORDER LOGIC ---
+          // Border Logic
           const isRightEdge = colIndex === 8;
           const isBottomEdge = rowIndex === 8;
           const isThickRight = (colIndex + 1) % 3 === 0 && !isRightEdge;
@@ -82,7 +75,7 @@ export default function SudokuGrid({
             ${!isBottomEdge ? (isThickBottom ? "border-b border-b-white/50" : "border-b border-b-white/10") : ""}
           `;
 
-          // --- TEXT COLOR PRIORITY ---
+          // Text Color
           let textColorClass = "";
           if (isError) {
             textColorClass = "text-neon-red font-bold";
@@ -94,12 +87,11 @@ export default function SudokuGrid({
             textColorClass = `${theme.numColor} font-semibold`; 
           }
 
-          // Big Text / Standard Text Logic
           const fontSizeClass = textSize === 'large' 
             ? "text-3xl sm:text-4xl md:text-5xl p-0" 
             : "text-xl sm:text-2xl md:text-3xl";
 
-          // Dynamic Note Sizing
+          // Dynamic Notes
           const cellNotes = notes[`${rowIndex}-${colIndex}`] || [];
           const noteCount = cellNotes.length;
           const useLargeNotes = noteCount > 0 && noteCount <= 4;
@@ -122,19 +114,23 @@ export default function SudokuGrid({
                 ${borderClasses}
                 ${fontSizeClass}
                 
-                ${/* BACKGROUND STATES */ ""}
+                ${/* PRIORITY 1: SELECTION (Highest) */ ""}
                 ${isSelected ? "bg-white/10 z-10" : ""}
-                ${/* Highlight Value Match */ ""}
-                ${!isSelected && isSameValue ? "bg-amber-500/20 shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
+                
+                ${/* PRIORITY 2: ERROR */ ""}
                 ${isError && !isSelected ? "bg-neon-red/10" : ""}
-                ${/* Related Row/Col Highlight */ ""}
-                ${!isSelected && !isSameValue && isRelated ? "bg-white/5" : ""}
                 
-                ${/* [UPDATED] Completion Glow using Animation */ ""}
-                ${!isSelected && !isSameValue && !isRelated && isFlashing ? "animate-flash-fade" : ""}
+                ${/* PRIORITY 3: COMPLETION FLASH (Now overrides Related/SameValue) */ ""}
+                ${!isSelected && !isError && isFlashing ? "animate-flash-fade z-20" : ""}
+
+                ${/* PRIORITY 4: SAME VALUE HIGHLIGHT (Only if not flashing) */ ""}
+                ${!isSelected && !isError && !isFlashing && isSameValue ? "bg-amber-500/20 shadow-[inset_0_0_10px_rgba(245,158,11,0.2)]" : ""}
+
+                ${/* PRIORITY 5: RELATED ROW/COL (Lowest - only if nothing else active) */ ""}
+                ${!isSelected && !isError && !isFlashing && !isSameValue && isRelated ? "bg-white/5" : ""}
                 
-                ${/* Hover State */ ""}
-                ${!isSelected && !isRelated && !isSameValue && !isFlashing ? "hover:bg-white/5" : ""}
+                ${/* PRIORITY 6: HOVER */ ""}
+                ${!isSelected && !isError && !isFlashing && !isSameValue && !isRelated ? "hover:bg-white/5" : ""}
                 
                 ${textColorClass}
               `}
@@ -151,7 +147,6 @@ export default function SudokuGrid({
               {cellValue !== 0 ? (
                 cellValue
               ) : (
-                // Dynamic Notes Renderer
                 <div className={`grid w-full h-full p-[1px] pointer-events-none ${noteGridClass}`}>
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
                     const hasNote = cellNotes.includes(n);
