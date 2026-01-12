@@ -3,7 +3,7 @@ export interface Rank {
   id: string;
   title: string;
   minXp: number;
-  color: string; // For UI styling (Tailwind classes or hex)
+  color: string;
   benefit: string;
 }
 
@@ -47,23 +47,25 @@ export const RANKS: Rank[] = [
 
 // --- 2. ECONOMY SETTINGS ---
 export const REWARDS = {
-  // XP GAINS (Increased for Mastery)
+  // XP GAINS
   XP_WIN_STANDARD: 100,
-  XP_WIN_MASTERY: 400, // <--- Big Jump (Was 250)
+  XP_WIN_MASTERY: 400,
   XP_LOSS: 25,
   
-  // STARDUST (Currency)
-  STARDUST_WIN: 15,
-  // New Time Bonus constant
-  STARDUST_PER_30S_SAVED: 1, 
+  // STARDUST (Standard Currency)
+  // [SUGGESTION] Increased base win from 15 to 50 to make grinding feel rewarding
+  STARDUST_WIN: 50, 
+  STARDUST_PER_30S_SAVED: 5, // [SUGGESTION] Increased from 1 to 5 to make speed matter
   
-  // COMET SHARDS
+  // COMET SHARDS (Premium Currency)
   SHARDS_WIN_MASTERY: 1,
 };
 
 // --- 3. DIFFICULTY CONFIG ---
 export const DIFFICULTY_SETTINGS = {
   Relaxed:  { xpMultiplier: 0.5, ratingChange: 0 },
-  Standard: { xpMultiplier: 1.0, ratingChange: 25 }, // <--- Increased to 25
-  Mastery:  { xpMultiplier: 2.0, ratingChange: 60 }, // <--- Increased to 60
+  Standard: { xpMultiplier: 1.0, ratingChange: 25 },
+  Mastery:  { xpMultiplier: 2.0, ratingChange: 60 },
+  // [NEW] Added Daily Config
+  Daily:    { xpMultiplier: 1.5, ratingChange: 0 }, 
 };

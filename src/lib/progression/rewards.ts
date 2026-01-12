@@ -1,8 +1,8 @@
 import { REWARDS, DIFFICULTY_SETTINGS } from './constants';
 
 // --- TYPES ---
-interface GameResult {
-  mode: 'Relaxed' | 'Standard' | 'Mastery';
+export interface GameResult {
+  mode: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily'; // [UPDATED] Added Daily
   timeElapsed: number; // in seconds
   mistakes: number;
   isWin: boolean;
@@ -19,7 +19,11 @@ export interface RewardSummary {
 
 // --- THE CALCULATOR ---
 export function calculateGameRewards(result: GameResult): RewardSummary {
-  const settings = DIFFICULTY_SETTINGS[result.mode];
+  // Handle Daily mode separately or fallback if not in constants
+  const settings = result.mode === 'Daily' 
+    ? { xpMultiplier: 1.5, ratingChange: 0 } 
+    : DIFFICULTY_SETTINGS[result.mode];
+
   const bonuses: string[] = [];
   
   let xp = 0;
@@ -30,19 +34,19 @@ export function calculateGameRewards(result: GameResult): RewardSummary {
   // 1. BASE REWARDS (Win vs Loss)
   if (result.isWin) {
     // XP Calculation
-    const baseXp = result.mode === 'Mastery' 
-      ? REWARDS.XP_WIN_MASTERY 
-      : REWARDS.XP_WIN_STANDARD;
-    
-    xp = Math.floor(baseXp * settings.xpMultiplier);
+    let baseXp = REWARDS.XP_WIN_STANDARD;
+    if (result.mode === 'Mastery') baseXp = REWARDS.XP_WIN_MASTERY;
+    if (result.mode === 'Daily') baseXp = 150; // Daily XP Reward
 
-    // ELO (Only change rating if not Relaxed)
-    if (result.mode !== 'Relaxed') {
-      eloChange = settings.ratingChange;
+    xp = Math.floor(baseXp * (settings?.xpMultiplier || 1));
+
+    // ELO (Only change rating if not Relaxed or Daily)
+    if (result.mode !== 'Relaxed' && result.mode !== 'Daily') {
+      eloChange = settings?.ratingChange || 15;
     }
 
     // STARDUST (Base)
-    stardust = REWARDS.STARDUST_WIN;
+    stardust = result.mode === 'Daily' ? 75 : REWARDS.STARDUST_WIN;
 
     // COMET SHARDS (Mastery Only)
     if (result.mode === 'Mastery') {
@@ -51,19 +55,17 @@ export function calculateGameRewards(result: GameResult): RewardSummary {
     }
 
     // --- TIME BONUS LOGIC ---
-    const parTime = result.mode === 'Mastery' ? 900 : 300;
+    let parTime = 300; // Standard
+    if (result.mode === 'Mastery') parTime = 900;
+    if (result.mode === 'Daily') parTime = 450;
     
-    // Safety check: Don't reward games faster than 10 seconds (Anti-cheat/Bug)
+    // Safety check: Don't reward games faster than 10 seconds
     if (result.timeElapsed < parTime && result.timeElapsed > 10) {
       const timeSaved = parTime - result.timeElapsed;
       
-      // Multiplier: Mastery time is worth more? 
-      // Current: 1 Dust per 30s.
-      // Suggestion: 1 Dust per 15s?
+      // Calculate bonus
       const timeBonus = Math.floor(timeSaved / 30) * REWARDS.STARDUST_PER_30S_SAVED;
-      
-      // Cap the bonus to prevent economy breaking (e.g., max 20 dust)
-      const finalBonus = Math.min(timeBonus, 20);
+      const finalBonus = Math.min(timeBonus, 20); // Cap at 20
 
       if (finalBonus > 0) {
         stardust += finalBonus;
@@ -76,14 +78,16 @@ export function calculateGameRewards(result: GameResult): RewardSummary {
     xp = REWARDS.XP_LOSS;
     
     // ELO PENALTY (Protected: Can't go below 1000)
-    if (result.mode !== 'Relaxed') {
-      const potentialElo = result.currentElo - 10; // Flat -10 penalty for loss
+    // Relaxed and Daily do NOT lose ELO
+    if (result.mode !== 'Relaxed' && result.mode !== 'Daily') {
       
-      // If Mastery, risk is higher (-20)
-      const penalty = result.mode === 'Mastery' ? 20 : 10;
+      // Standard: -15, Mastery: -30 (High Risk)
+      const penalty = result.mode === 'Mastery' ? 30 : 15;
 
+      // [FIX] Soft Floor Logic
+      // If subtracting the penalty would drop below 1000, only subtract enough to reach 1000.
       if (result.currentElo - penalty < 1000) {
-        eloChange = 1000 - result.currentElo; // Soft landing at 1000
+        eloChange = -(result.currentElo - 1000); 
       } else {
         eloChange = -penalty;
       }
@@ -94,7 +98,7 @@ export function calculateGameRewards(result: GameResult): RewardSummary {
   if (result.isWin) {
     // FLAWLESS (No Mistakes)
     if (result.mistakes === 0) {
-      const flawlessBonus = 10;
+      const flawlessBonus = result.mode === 'Mastery' ? 20 : 10;
       stardust += flawlessBonus;
       bonuses.push(`Flawless (+${flawlessBonus} Dust)`);
     }
