@@ -6,15 +6,16 @@ import { useStore } from "@/lib/store";
 // 1. Inner Component to handle Advanced Sync Logic
 function AuthSync({ children }: { children: React.ReactNode }) {
   const { data: session, status } = useSession();
-  const { pushSync } = useStore();
+  // [UPDATED] Observe hydration state to ensure we don't sync empty stores
+  const { pushSync, hasHydrated } = useStore(); 
   
   // Ref to throttle sync calls (prevent spamming server on rapid tab switching)
   const lastSyncTime = useRef<number>(0);
   const SYNC_COOLDOWN = 10000; // 10 seconds
 
   const triggerSync = useCallback(async () => {
-    // Only sync if logged in
-    if (status !== "authenticated" || !session?.user) return;
+    // Only sync if logged in AND hydrated
+    if (status !== "authenticated" || !session?.user || !hasHydrated) return;
 
     const now = Date.now();
     // Throttle check
@@ -28,10 +29,10 @@ function AuthSync({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error("Auto-sync failed:", error);
     }
-  }, [status, session, pushSync]);
+  }, [status, session, hasHydrated, pushSync]);
 
   useEffect(() => {
-    // 1. Sync immediately on mount/login
+    // 1. Sync immediately on mount/login/hydration
     triggerSync();
 
     // 2. Event Handlers for PWA/Mobile Lifecycle
@@ -50,6 +51,8 @@ function AuthSync({ children }: { children: React.ReactNode }) {
     const onOnline = () => {
       // Sync when internet connection is restored
       console.log("Network restored. Syncing...");
+      // [UPDATED] Force sync to bypass cooldown if user was offline
+      lastSyncTime.current = 0; 
       triggerSync();
     };
 

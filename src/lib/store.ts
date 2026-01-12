@@ -18,19 +18,28 @@ export interface GameState {
 }
 
 interface UserStore {
+  // META STATE
+  hasHydrated: boolean;
+  isDirty: boolean; // Flag to indicate offline changes pending sync
+  setHasHydrated: (val: boolean) => void;
+
   // 1. SKILL
   elo: number;
+  eloLastUpdated: number;
   updateElo: (change: number) => void;
 
   // 2. PROGRESSION (Constellation)
   xp: number;
+  xpLastUpdated: number;
   addXp: (amount: number) => void;
   
   stardust: number;
   cometShards: number;
+  currencyLastUpdated: number;
   addCurrency: (type: 'stardust' | 'cometShards', amount: number) => void;
 
   unlockedThemes: string[];
+  themesLastUpdated: number;
   unlockTheme: (themeId: string) => void;
 
   // 3. LIFETIME STATS
@@ -42,6 +51,7 @@ interface UserStore {
     Standard: number | null;
     Mastery: number | null;
   };
+  statsLastUpdated: number;
   incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery', time: number, mistakes: number) => void;
 
   // 4. GAME STATE
@@ -73,15 +83,14 @@ interface UserStore {
   audioEnabled: boolean;
   timerVisible: boolean;      
   autoEraseNotes: boolean;    
-  // [NEW] Visual & Input Settings
   inputMode: 'cell-first' | 'digit-first';
   textSize: 'standard' | 'large';
   highlightCompletions: boolean;
+  settingsLastUpdated: number;
 
   toggleAudio: () => void;
   toggleTimer: () => void;    
   toggleAutoErase: () => void;
-  // [NEW] Toggles
   toggleInputMode: () => void;
   toggleTextSize: () => void;
   toggleHighlightCompletions: () => void;
@@ -93,7 +102,7 @@ interface UserStore {
   pushSync: () => Promise<void>;
 
   // 10. AUTH ACTIONS
-  logout: () => void; // [NEW] Logout Action
+  logout: () => void; 
 }
 
 // --- STORE IMPLEMENTATION ---
@@ -101,15 +110,25 @@ export const useStore = create<UserStore>()(
   persist(
     (set, get) => ({
       // DEFAULTS
+      hasHydrated: false,
+      isDirty: false,
+      setHasHydrated: (val) => set({ hasHydrated: val }),
+
       elo: 1000,
+      eloLastUpdated: 0,
       xp: 0,
+      xpLastUpdated: 0,
       stardust: 0,
       cometShards: 0,
+      currencyLastUpdated: 0,
       unlockedThemes: ['midnight'], 
+      themesLastUpdated: 0,
+      
       gamesPlayed: 0,
       gamesWon: 0,
       flawlessWins: 0,
       bestTimes: { Relaxed: null, Standard: null, Mastery: null },
+      statsLastUpdated: 0,
       
       activeGame: null,
       maxMistakes: 3, 
@@ -122,16 +141,20 @@ export const useStore = create<UserStore>()(
       currentStreak: 0,
       lastPlayedDate: null,
 
-      // Settings Defaults
       audioEnabled: true,
       timerVisible: true,     
       autoEraseNotes: true,   
       inputMode: 'cell-first',
       textSize: 'standard',
       highlightCompletions: true,
+      settingsLastUpdated: 0,
 
       // ACTIONS
-      updateElo: (change) => set((state) => ({ elo: state.elo + change })),
+      updateElo: (change) => set((state) => ({ 
+        elo: state.elo + change,
+        eloLastUpdated: Date.now(),
+        isDirty: true 
+      })),
       
       addXp: (amount) => set((state) => {
         let finalAmount = amount;
@@ -139,7 +162,11 @@ export const useStore = create<UserStore>()(
         if (isMarsUnlocked) {
             finalAmount = Math.floor(amount * 1.15); 
         }
-        return { xp: state.xp + finalAmount };
+        return { 
+          xp: state.xp + finalAmount,
+          xpLastUpdated: Date.now(),
+          isDirty: true
+        };
       }),
       
       addCurrency: (type, amount) => set((state) => {
@@ -150,13 +177,19 @@ export const useStore = create<UserStore>()(
                finalAmount = Math.floor(amount * 1.10); 
            }
         }
-        return { [type]: state[type] + finalAmount };
+        return { 
+          [type]: state[type] + finalAmount,
+          currencyLastUpdated: Date.now(),
+          isDirty: true
+        };
       }),
       
       unlockTheme: (themeId) => set((state) => ({
         unlockedThemes: state.unlockedThemes.includes(themeId) 
           ? state.unlockedThemes 
-          : [...state.unlockedThemes, themeId]
+          : [...state.unlockedThemes, themeId],
+        themesLastUpdated: Date.now(),
+        isDirty: true
       })),
 
       refreshPerks: () => {
@@ -168,30 +201,42 @@ export const useStore = create<UserStore>()(
 
       incrementStats: (isWin, mode, time, mistakes) => set((state) => {
         const newGamesPlayed = state.gamesPlayed + 1;
-        if (!isWin) return { gamesPlayed: newGamesPlayed };
+        let updates: Partial<UserStore> = { gamesPlayed: newGamesPlayed };
 
-        const newGamesWon = state.gamesWon + 1;
-        const isFlawless = mistakes === 0;
-        const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
+        if (isWin) {
+          const newGamesWon = state.gamesWon + 1;
+          const isFlawless = mistakes === 0;
+          const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
 
-        const currentBest = state.bestTimes[mode];
-        let newBestTime = currentBest;
-        if (currentBest === null || time < currentBest) {
-          newBestTime = time;
+          const currentBest = state.bestTimes[mode];
+          let newBestTime = currentBest;
+          if (currentBest === null || time < currentBest) {
+            newBestTime = time;
+          }
+
+          updates = {
+            ...updates,
+            gamesWon: newGamesWon,
+            flawlessWins: newFlawlessWins,
+            bestTimes: { ...state.bestTimes, [mode]: newBestTime }
+          };
         }
 
         return {
-          gamesPlayed: newGamesPlayed,
-          gamesWon: newGamesWon,
-          flawlessWins: newFlawlessWins,
-          bestTimes: { ...state.bestTimes, [mode]: newBestTime }
+          ...updates,
+          statsLastUpdated: Date.now(),
+          isDirty: true
         };
       }),
 
       saveGame: (game) => set({ activeGame: game }),
       clearGame: () => set({ activeGame: null }),
       setThemeDifficulty: (diff) => set({ themeDifficulty: diff }),
-      setActiveTheme: (themeId) => set({ activeThemeId: themeId }),
+      setActiveTheme: (themeId) => set((state) => ({ 
+        activeThemeId: themeId,
+        settingsLastUpdated: Date.now(),
+        isDirty: true
+      })),
 
       updateStreak: () => set((state) => {
         const today = new Date().toISOString().split('T')[0];
@@ -210,97 +255,59 @@ export const useStore = create<UserStore>()(
             currentStreak: newStreak, 
             lastPlayedDate: today,
             stardust: state.stardust + stardustBonus,
-            showDailyRewardModal: isVenusUnlocked
+            showDailyRewardModal: isVenusUnlocked,
+            statsLastUpdated: Date.now(),
+            isDirty: true
         };
       }),
 
-      toggleAudio: () => set((state) => ({ audioEnabled: !state.audioEnabled })),
-      toggleTimer: () => set((state) => ({ timerVisible: !state.timerVisible })),
-      toggleAutoErase: () => set((state) => ({ autoEraseNotes: !state.autoEraseNotes })),
-      
-      // [NEW] Toggle Actions
-      toggleInputMode: () => set((state) => ({ 
-        inputMode: state.inputMode === 'cell-first' ? 'digit-first' : 'cell-first' 
-      })),
-      toggleTextSize: () => set((state) => ({ 
-        textSize: state.textSize === 'standard' ? 'large' : 'standard' 
-      })),
-      toggleHighlightCompletions: () => set((state) => ({ 
-        highlightCompletions: !state.highlightCompletions 
-      })),
+      toggleAudio: () => set((state) => ({ audioEnabled: !state.audioEnabled, settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleTimer: () => set((state) => ({ timerVisible: !state.timerVisible, settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleAutoErase: () => set((state) => ({ autoEraseNotes: !state.autoEraseNotes, settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleInputMode: () => set((state) => ({ inputMode: state.inputMode === 'cell-first' ? 'digit-first' : 'cell-first', settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleTextSize: () => set((state) => ({ textSize: state.textSize === 'standard' ? 'large' : 'standard', settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleHighlightCompletions: () => set((state) => ({ highlightCompletions: !state.highlightCompletions, settingsLastUpdated: Date.now(), isDirty: true })),
 
-      // [NEW] LOGOUT ACTION (Resets all stores & local storage)
       logout: () => {
-        // 1. Reset Main Store
         set({
           elo: 1000,
+          eloLastUpdated: 0,
           xp: 0,
+          xpLastUpdated: 0,
           stardust: 0,
           cometShards: 0,
+          currencyLastUpdated: 0,
           unlockedThemes: ['midnight'],
+          themesLastUpdated: 0,
           gamesPlayed: 0,
           gamesWon: 0,
           flawlessWins: 0,
           bestTimes: { Relaxed: null, Standard: null, Mastery: null },
+          statsLastUpdated: 0,
           activeGame: null,
           activeThemeId: 'midnight',
           currentStreak: 0,
           lastPlayedDate: null,
           maxMistakes: 3, 
           showDailyRewardModal: false, 
-          
-          // Reset Settings
           audioEnabled: true,
           timerVisible: true,
           autoEraseNotes: true,
           inputMode: 'cell-first',
           textSize: 'standard',
           highlightCompletions: true,
+          settingsLastUpdated: 0,
+          isDirty: false
         });
-
-        // 2. Reset Galaxy Store
         useGalaxyStore.getState().resetGalaxy();
-        
-        // 3. Force Wipe Persistence (Safety Net)
         if (typeof window !== 'undefined') {
             localStorage.removeItem('ku-storage');
             localStorage.removeItem('ku-galaxy-storage');
         }
       },
 
-      // [UPDATED] RESET PROGRESS (Clears Galaxy Too)
       resetProgress: async () => {
-        // 1. Reset Main Store
-        set({
-          elo: 1000,
-          xp: 0,
-          stardust: 0,
-          cometShards: 0,
-          unlockedThemes: ['midnight'],
-          gamesPlayed: 0,
-          gamesWon: 0,
-          flawlessWins: 0,
-          bestTimes: { Relaxed: null, Standard: null, Mastery: null },
-          activeGame: null,
-          activeThemeId: 'midnight',
-          currentStreak: 0,
-          lastPlayedDate: null,
-          maxMistakes: 3, 
-          showDailyRewardModal: false, 
-          
-          // Reset Settings
-          audioEnabled: true,
-          timerVisible: true,
-          autoEraseNotes: true,
-          inputMode: 'cell-first',
-          textSize: 'standard',
-          highlightCompletions: true,
-        });
-
-        // 2. [NEW] Reset Galaxy Store
-        useGalaxyStore.getState().resetGalaxy();
-
-        // 3. Reset Server
+        get().logout();
         try {
           await fetch("/api/user/reset", { method: "POST" });
           console.log("✅ Server data reset.");
@@ -309,43 +316,50 @@ export const useStore = create<UserStore>()(
         }
       },
 
-      // [UPDATED] PUSH SYNC ACTION (Includes Galaxy Data & New Settings)
       pushSync: async () => {
         const state = get();
-        // [NEW] Get Galaxy State directly
+        if (!state.hasHydrated) return; // Prevent syncing default state before hydration
+
         const galaxyState = useGalaxyStore.getState();
         
         const payload = {
-          // --- USER STATS ---
+          // --- DATA + TIMESTAMPS ---
           elo: state.elo,
+          eloLastUpdated: state.eloLastUpdated,
           xp: state.xp,
+          xpLastUpdated: state.xpLastUpdated,
           stardust: state.stardust,
           cometShards: state.cometShards,
+          currencyLastUpdated: state.currencyLastUpdated,
           unlockedThemes: state.unlockedThemes,
-          gamesPlayed: state.gamesPlayed,
-          gamesWon: state.gamesWon,
-          flawlessWins: state.flawlessWins,
-          currentStreak: state.currentStreak,
-          lastPlayedDate: state.lastPlayedDate,
-          bestTimes: state.bestTimes,
+          themesLastUpdated: state.themesLastUpdated,
           
-          // --- SETTINGS ---
-          activeThemeId: state.activeThemeId,
-          audioEnabled: state.audioEnabled,
-          timerVisible: state.timerVisible,
-          autoEraseNotes: state.autoEraseNotes,
-          // [NEW] New Settings
-          inputMode: state.inputMode,
-          textSize: state.textSize,
-          highlightCompletions: state.highlightCompletions,
+          stats: {
+            gamesPlayed: state.gamesPlayed,
+            gamesWon: state.gamesWon,
+            flawlessWins: state.flawlessWins,
+            currentStreak: state.currentStreak,
+            lastPlayedDate: state.lastPlayedDate,
+            bestTimes: state.bestTimes,
+          },
+          statsLastUpdated: state.statsLastUpdated,
+          
+          settings: {
+            activeThemeId: state.activeThemeId,
+            audioEnabled: state.audioEnabled,
+            timerVisible: state.timerVisible,
+            autoEraseNotes: state.autoEraseNotes,
+            inputMode: state.inputMode,
+            textSize: state.textSize,
+            highlightCompletions: state.highlightCompletions,
+          },
+          settingsLastUpdated: state.settingsLastUpdated,
 
-          // [NEW] GALAXY DATA (Added to Payload)
           unlockedNodeIds: galaxyState.unlockedNodeIds,
           historyStars: galaxyState.historyStars,
         };
 
         try {
-          console.log("☁️ Syncing with cloud...");
           const res = await fetch("/api/sync", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -359,45 +373,54 @@ export const useStore = create<UserStore>()(
              const p = u.progression || {};
              const s = u.stats || {};
              const pref = u.settings || {};
-             // [NEW] Galaxy Data from DB
              const g = u.galaxy || {}; 
 
-             // 1. Update Main Store
-             set({
-               elo: p.elo,
-               xp: p.xp,
-               stardust: p.stardust,
-               cometShards: p.cometShards,
-               unlockedThemes: p.unlockedThemes,
-               gamesPlayed: s.gamesPlayed,
-               gamesWon: s.gamesWon,
-               flawlessWins: s.flawlessWins,
-               currentStreak: s.currentStreak,
-               lastPlayedDate: s.lastPlayedDate,
-               bestTimes: {
+             // SERVER MERGE LOGIC: Only update local if server is newer
+             set((prev) => ({
+               elo: p.eloLastUpdated > prev.eloLastUpdated ? p.elo : prev.elo,
+               eloLastUpdated: Math.max(p.eloLastUpdated, prev.eloLastUpdated),
+               
+               xp: p.xpLastUpdated > prev.xpLastUpdated ? p.xp : prev.xp,
+               xpLastUpdated: Math.max(p.xpLastUpdated, prev.xpLastUpdated),
+               
+               stardust: p.currencyLastUpdated > prev.currencyLastUpdated ? p.stardust : prev.stardust,
+               cometShards: p.currencyLastUpdated > prev.currencyLastUpdated ? p.cometShards : prev.cometShards,
+               currencyLastUpdated: Math.max(p.currencyLastUpdated, prev.currencyLastUpdated),
+
+               unlockedThemes: p.themesLastUpdated > prev.themesLastUpdated ? p.unlockedThemes : prev.unlockedThemes,
+               themesLastUpdated: Math.max(p.themesLastUpdated, prev.themesLastUpdated),
+
+               gamesPlayed: s.statsLastUpdated > prev.statsLastUpdated ? s.gamesPlayed : prev.gamesPlayed,
+               gamesWon: s.statsLastUpdated > prev.statsLastUpdated ? s.gamesWon : prev.gamesWon,
+               flawlessWins: s.statsLastUpdated > prev.statsLastUpdated ? s.flawlessWins : prev.flawlessWins,
+               currentStreak: s.statsLastUpdated > prev.statsLastUpdated ? s.currentStreak : prev.currentStreak,
+               lastPlayedDate: s.statsLastUpdated > prev.statsLastUpdated ? s.lastPlayedDate : prev.lastPlayedDate,
+               bestTimes: s.statsLastUpdated > prev.statsLastUpdated ? {
                  Relaxed: s.bestTimeRelaxed || null,
                  Standard: s.bestTimeStandard || null,
                  Mastery: s.bestTimeMastery || null,
-               },
-               activeThemeId: pref.activeThemeId || 'midnight',
-               audioEnabled: pref.audioEnabled ?? true,
-               timerVisible: pref.timerVisible ?? true,
-               autoEraseNotes: pref.autoEraseNotes ?? true,
-               // [NEW] Sync New Settings
-               inputMode: pref.inputMode || 'cell-first',
-               textSize: pref.textSize || 'standard',
-               highlightCompletions: pref.highlightCompletions ?? true,
-             });
+               } : prev.bestTimes,
+               statsLastUpdated: Math.max(s.statsLastUpdated, prev.statsLastUpdated),
 
-             // 2. [NEW] Update Galaxy Store from Cloud Data
+               activeThemeId: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.activeThemeId : prev.activeThemeId,
+               audioEnabled: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.audioEnabled : prev.audioEnabled,
+               timerVisible: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.timerVisible : prev.timerVisible,
+               autoEraseNotes: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.autoEraseNotes : prev.autoEraseNotes,
+               inputMode: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.inputMode : prev.inputMode,
+               textSize: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.textSize : prev.textSize,
+               highlightCompletions: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.highlightCompletions : prev.highlightCompletions,
+               settingsLastUpdated: Math.max(pref.settingsLastUpdated, prev.settingsLastUpdated),
+
+               isDirty: false // Sync complete
+             }));
+
              if (g.unlockedNodeIds) {
                  useGalaxyStore.setState({ 
                      unlockedNodeIds: g.unlockedNodeIds,
                      historyStars: g.historyStars || [] 
                  });
              }
-
-             console.log("✅ Sync successful.");
+             console.log("✅ Smart Sync successful.");
           }
         } catch (err) {
           console.error("Sync failed:", err);
@@ -406,6 +429,9 @@ export const useStore = create<UserStore>()(
     }),
     {
       name: 'ku-storage',
+      onRehydrateStorage: () => (state) => {
+        state?.setHasHydrated(true);
+      }
     }
   )
 );
