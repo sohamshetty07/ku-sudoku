@@ -28,14 +28,28 @@ export default function ThemeManager() {
       {/* BASE LAYER (Solid Fallback) */}
       <div className="fixed inset-0 -z-50 bg-[#0F172A]" />
 
-      {/* DYNAMIC THEME LAYER */}
+      {/* DYNAMIC THEME LAYER 
+          [UPDATED] Check 'isDynamic' to trigger the gradient-xy animation
+      */}
       <div 
-        className="fixed inset-0 -z-50 transition-[background] duration-1000 ease-in-out pointer-events-none"
+        className={`
+            fixed inset-0 -z-50 transition-[background] duration-1000 ease-in-out pointer-events-none
+            ${activeTheme.isDynamic ? 'animate-gradient-xy' : ''}
+        `}
         style={{ background: activeTheme.background }}
       />
 
+      {/* CONTRAST PRESERVATION LAYER 
+          If the theme is very bright (like Lumina), we add a semi-transparent dark overlay.
+      */}
+      <div 
+        className={`
+            fixed inset-0 -z-40 pointer-events-none transition-opacity duration-1000
+            ${activeTheme.requiresDimming ? 'bg-black/60' : 'opacity-0'}
+        `}
+      />
+
       {/* NOISE OVERLAY */}
-      {/* Assumes 'bg-noise' is defined in tailwind.config.ts or globals.css */}
       <div className="fixed inset-0 -z-40 bg-noise opacity-[0.03] pointer-events-none mix-blend-overlay" />
     </>
   );

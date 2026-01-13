@@ -2,7 +2,7 @@ export interface Theme {
   id: string;
   name: string;
   description: string;
-  type: 'Standard' | 'Premium' | 'Legendary';
+  type: 'Standard' | 'Premium' | 'Legendary' | 'Mythic'; // [NEW] Mythic Tier
   cost: number;
   currency: 'stardust' | 'cometShards';
   
@@ -12,11 +12,15 @@ export interface Theme {
   // App Visuals (CSS/Tailwind)
   background: string;   
   gridBorder: string;
-  gridColor: string; // <--- NEW: Required for grid preview logic
+  gridColor: string; 
   numColor: string;     
   
   // Animation Visuals (Hex)
   accentHex: string;    
+
+  // Visual Safety Flags
+  requiresDimming?: boolean; // Dark overlay for light themes
+  isDynamic?: boolean;       // [NEW] Triggers CSS animation for fluid backgrounds
 }
 
 export const SHOP_THEMES: Theme[] = [
@@ -36,6 +40,20 @@ export const SHOP_THEMES: Theme[] = [
     accentHex: '#22d3ee', 
   },
   {
+    id: 'twilight',
+    name: 'Twilight',
+    description: 'Soft purples for deep focus.',
+    type: 'Standard',
+    cost: 250,
+    currency: 'stardust',
+    previewColor: '#4c1d95',
+    background: 'linear-gradient(to bottom, #2e1065, #0f172a)',
+    gridBorder: 'border-violet-500/30',
+    gridColor: 'rgba(139, 92, 246, 0.15)',
+    numColor: 'text-violet-300',
+    accentHex: '#a78bfa',
+  },
+  {
     id: 'matrix',
     name: 'Construct',
     description: 'Raw code visibility. See the logic.',
@@ -50,6 +68,20 @@ export const SHOP_THEMES: Theme[] = [
     accentHex: '#34d399', 
   },
   {
+    id: 'blueprint',
+    name: 'Blueprint',
+    description: 'Architectural precision. Royal blue aesthetics.',
+    type: 'Standard',
+    cost: 750,
+    currency: 'stardust',
+    previewColor: '#1e40af',
+    background: 'linear-gradient(135deg, #172554 0%, #1e3a8a 100%)',
+    gridBorder: 'border-blue-400/40',
+    gridColor: 'rgba(96, 165, 250, 0.2)',
+    numColor: 'text-blue-200',
+    accentHex: '#60a5fa',
+  },
+  {
     id: 'sunset',
     name: 'Horizon',
     description: 'Focus in the warmth of a dying star.',
@@ -62,6 +94,20 @@ export const SHOP_THEMES: Theme[] = [
     gridColor: 'rgba(249, 115, 22, 0.2)',
     numColor: 'text-orange-400',
     accentHex: '#fb923c', 
+  },
+  {
+    id: 'sepia',
+    name: 'Archive',
+    description: 'Ancient data logs. Retro warmth.',
+    type: 'Standard',
+    cost: 1250,
+    currency: 'stardust',
+    previewColor: '#78350f',
+    background: '#292524',
+    gridBorder: 'border-stone-500/40',
+    gridColor: 'rgba(214, 211, 209, 0.15)',
+    numColor: 'text-amber-100',
+    accentHex: '#f59e0b',
   },
   {
     id: 'glacier',
@@ -122,6 +168,20 @@ export const SHOP_THEMES: Theme[] = [
     accentHex: '#c084fc', 
   },
   {
+    id: 'dracula',
+    name: 'Vampire',
+    description: 'Gothic elegance. Dark charcoal and pink.',
+    type: 'Premium',
+    cost: 5,
+    currency: 'cometShards',
+    previewColor: '#f472b6',
+    background: '#282a36',
+    gridBorder: 'border-pink-500/40',
+    gridColor: 'rgba(244, 114, 182, 0.15)',
+    numColor: 'text-pink-300',
+    accentHex: '#ff79c6',
+  },
+  {
     id: 'synthwave',
     name: 'Synthwave',
     description: 'Neon sunsets and digital dreams.',
@@ -138,7 +198,7 @@ export const SHOP_THEMES: Theme[] = [
   {
     id: 'sakura',
     name: 'Blossom',
-    description: 'Peaceful, soft pink hues for relaxed play.',
+    description: 'Peaceful pink hues. Requires focus.',
     type: 'Premium',
     cost: 8,
     currency: 'cometShards',
@@ -222,18 +282,52 @@ export const SHOP_THEMES: Theme[] = [
     accentHex: '#e5e5e5', 
   },
   {
+    id: 'hyperion',
+    name: 'Hyperion',
+    description: 'Multiversal energy. Shifts across the spectrum.',
+    type: 'Legendary',
+    cost: 28,
+    currency: 'cometShards',
+    previewColor: '#8b5cf6',
+    background: 'linear-gradient(45deg, #1e1b4b, #312e81, #4c1d95)',
+    gridBorder: 'border-fuchsia-500/50',
+    gridColor: 'rgba(216, 180, 254, 0.2)',
+    numColor: 'text-fuchsia-300',
+    accentHex: '#d8b4fe',
+  },
+  {
     id: 'lumina',
     name: 'Lumina',
-    description: 'Blinding light. For those who fear the dark.',
+    description: 'Blinding light. Dimmed for safety.',
     type: 'Legendary',
     cost: 30,
     currency: 'cometShards',
     previewColor: '#f8fafc',
     background: 'radial-gradient(circle at center, #e2e8f0 0%, #cbd5e1 100%)',
-    gridBorder: 'border-slate-400',
-    gridColor: 'rgba(71, 85, 105, 0.2)',
-    numColor: 'text-slate-800',
-    accentHex: '#0f172a', // Dark accent for contrast
+    gridBorder: 'border-slate-300',
+    gridColor: 'rgba(255, 255, 255, 0.3)',
+    numColor: 'text-white',
+    accentHex: '#ffffff',
+    requiresDimming: true,
+  },
+
+  // --- TIER 4: MYTHIC (The Dynamic Theme) ---
+  {
+    id: 'eternity',
+    name: 'Eternity',
+    description: 'A living paradox. The colors of the cosmos in flux.',
+    type: 'Mythic',
+    cost: 100, // The Ultimate Flex
+    currency: 'cometShards',
+    previewColor: '#ffffff',
+    // We use a multi-color gradient that will be animated by CSS
+    background: 'linear-gradient(270deg, #ff0080, #ff8c00, #40e0d0, #ff0080)',
+    gridBorder: 'border-white/50',
+    gridColor: 'rgba(255, 255, 255, 0.2)',
+    numColor: 'text-white',
+    accentHex: '#ffffff',
+    requiresDimming: true, // It's bright/chaotic, so dim it slightly
+    isDynamic: true, // [NEW] Triggers the 'animate-gradient-xy' class
   },
 ];
 

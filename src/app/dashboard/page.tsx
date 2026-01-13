@@ -125,7 +125,7 @@ export default function Dashboard() {
         relative w-full h-screen overflow-y-auto overflow-x-hidden
         flex flex-col items-center 
         p-4 pb-24
-        bg-[#0F172A]
+        bg-transparent
         pt-[max(2rem,env(safe-area-inset-top))]
         animate-fade-in
       "

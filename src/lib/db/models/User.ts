@@ -49,7 +49,7 @@ const UserSchema = new mongoose.Schema({
     inputMode: { type: String, default: 'cell-first' },
     textSize: { type: String, default: 'standard' },
     highlightCompletions: { type: Boolean, default: true },
-    zenMode: { type: Boolean, default: false }, // [NEW] Persist Zen Mode
+    zenMode: { type: Boolean, default: false }, // [ADDED] Persist Zen Mode
     
     settingsLastUpdated: { type: Number, default: 0 }, 
   },

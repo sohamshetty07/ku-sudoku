@@ -22,6 +22,9 @@
   --animate-flash-fade: flash-fade 1.5s ease-out forwards;
   --animate-fade-out-slow: fade-out-slow 1s ease-in-out forwards;
   --animate-fade-in-slow: fade-in-slow 0.5s ease-out forwards;
+  
+  /* [NEW] Dynamic Theme Animation */
+  --animate-gradient-xy: gradient-xy 60s ease infinite;
 
   @keyframes flash-fade {
     0% {
@@ -47,6 +50,13 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
+
+  /* [NEW] Keyframes for Fluid Gradient */
+  @keyframes gradient-xy {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
 }
 
 /* Global Page Setup */
@@ -67,4 +77,9 @@ body {
   opacity: 1;
   pointer-events: auto;
   transition: opacity 0.3s ease-out;
+}
+
+/* [NEW] Helper for Gradient Animation */
+.animate-gradient-xy {
+  background-size: 400% 400% !important;
 }

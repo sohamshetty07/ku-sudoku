@@ -1,27 +1,37 @@
 "use client"; 
 
-import React from "react";
+import React, { useState } from "react"; 
 import Button from "@/components/ui/Button";
 import AuthButton from "@/components/ui/AuthButton";
 import Link from "next/link";
 import { useSession } from "next-auth/react"; 
-import { Gamepad2, Sparkles, Github, ArrowRight } from "lucide-react";
+import { Gamepad2, Sparkles, Github, ArrowRight, Book } from "lucide-react"; 
+// [UPDATED] Import the existing RankInfoModal
+import RankInfoModal from "@/components/progression/RankInfoModal"; 
 
 export default function Home() {
   const { status } = useSession();
   const isLoading = status === "loading";
   const isLoggedIn = status === "authenticated";
+  
+  // [NEW] Modal State
+  const [showManual, setShowManual] = useState(false);
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden p-6 bg-midnight text-slate-200 selection:bg-neon-cyan/30">
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden p-6 bg-transparent text-slate-200 selection:bg-neon-cyan/30">
       
+      {/* [NEW] GAME MANUAL MODAL (Reusing RankInfoModal) */}
+      <RankInfoModal 
+        isOpen={showManual} 
+        onClose={() => setShowManual(false)} 
+        currentXp={0} // Default to 0 for guest view, doesn't matter for reading
+        initialTab="basics" // Start on Basics tab
+      />
+
       {/* --- BACKGROUND ATMOSPHERE --- */}
       <div className="fixed inset-0 z-0 pointer-events-none">
-          {/* Top Left Glow (Deep Violet) */}
-          <div className="absolute top-[-20%] left-[-10%] h-[600px] w-[600px] rounded-full bg-violet-900/20 blur-[120px] animate-pulse-slow" />
-          {/* Bottom Right Glow (Neon Cyan) */}
-          <div className="absolute bottom-[-20%] right-[-10%] h-[600px] w-[600px] rounded-full bg-neon-cyan/10 blur-[120px]" />
-          {/* Noise Overlay for Texture */}
+          <div className="absolute top-[-20%] left-[-10%] h-[600px] w-[600px] rounded-full bg-violet-900/10 blur-[120px] animate-pulse-slow" />
+          <div className="absolute bottom-[-20%] right-[-10%] h-[600px] w-[600px] rounded-full bg-neon-cyan/5 blur-[120px]" />
           <div className="absolute inset-0 bg-noise opacity-[0.03] mix-blend-overlay" />
       </div>
 
@@ -34,7 +44,6 @@ export default function Home() {
             <h1 className="text-8xl font-bold font-mono tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white via-slate-200 to-slate-500 drop-shadow-2xl transition-all group-hover:scale-105">
               Ku
             </h1>
-            {/* Decorative dot - Neon Cyan */}
             <div className="absolute -top-2 -right-4 h-4 w-4 rounded-full bg-neon-cyan shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-bounce-slow" />
           </div>
           
@@ -77,7 +86,7 @@ export default function Home() {
               <div className="w-full border-t border-white/10"></div>
             </div>
             <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-widest">
-              <span className="bg-[#0F172A] px-3 text-slate-500">
+              <span className="bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-slate-400">
                 {isLoggedIn ? "Identity Confirmed" : "Or Sync Progress"}
               </span>
             </div>
@@ -91,7 +100,19 @@ export default function Home() {
       </div>
 
       {/* --- MINIMAL FOOTER --- */}
-      <div className="absolute bottom-8 text-center animate-fade-in" style={{ animationDelay: '0.5s' }}>
+      <div className="absolute bottom-8 text-center animate-fade-in flex items-center gap-4" style={{ animationDelay: '0.5s' }}>
+        
+        {/* [NEW] Manual Button */}
+        <button
+          onClick={() => setShowManual(true)}
+          className="group inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 transition-all hover:border-white/20"
+          title="Game Manual"
+        >
+          <Book size={16} className="text-slate-400 group-hover:text-white transition-colors" />
+          <span className="text-xs text-slate-500 group-hover:text-slate-300 font-mono">Guide</span>
+        </button>
+
+        {/* Github Button */}
         <a 
           href="https://github.com/sohamshetty07/ku-sudoku" 
           target="_blank" 
@@ -99,7 +120,9 @@ export default function Home() {
           className="group inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 transition-all hover:border-white/20"
         >
           <Github size={16} className="text-slate-400 group-hover:text-white transition-colors" />
+          <span className="text-xs text-slate-500 group-hover:text-slate-300 font-mono">v1.0.0</span>
         </a>
+
       </div>
 
     </main>
