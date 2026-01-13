@@ -15,7 +15,7 @@ export default function ObservatoryPage() {
   useEffect(() => {
     setMounted(true);
     
-    // Ensure wallet is up-to-date with server (e.g. cross-device play)
+    // Ensure wallet is up-to-date with server
     const initShop = async () => {
       setIsSyncing(true);
       await pushSync();
@@ -30,12 +30,10 @@ export default function ObservatoryPage() {
   const premiumThemes = SHOP_THEMES.filter(t => t.type !== 'Standard');
 
   return (
-    <main className="min-h-screen bg-[#0F172A] text-slate-200 animate-fade-in pb-[calc(120px+env(safe-area-inset-bottom))]">
+    <main className="min-h-screen bg-midnight text-slate-200 animate-fade-in pb-[calc(120px+env(safe-area-inset-bottom))]">
       
-      {/* --- STICKY HEADER: WALLET & NAV ---
-          Includes Safe Area padding for iPhones 
-      */}
-      <div className="sticky top-0 z-50 w-full bg-[#0F172A]/80 backdrop-blur-xl border-b border-white/5 pt-[env(safe-area-inset-top)] shadow-2xl shadow-black/20">
+      {/* --- STICKY HEADER: WALLET & NAV --- */}
+      <div className="sticky top-0 z-50 w-full bg-midnight/80 backdrop-blur-xl border-b border-white/5 pt-[env(safe-area-inset-top)] shadow-2xl shadow-black/20">
         <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center h-16">
             
             <Link 
@@ -55,8 +53,8 @@ export default function ObservatoryPage() {
                 </div>
 
                 {/* Stardust */}
-                <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-full border border-amber-500/20 shadow-[0_0_15px_rgba(245,158,11,0.1)] backdrop-blur-md">
-                    <Star size={14} className="text-amber-400 fill-amber-400" />
+                <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-full border border-neon-amber/20 shadow-[0_0_15px_rgba(245,158,11,0.1)] backdrop-blur-md">
+                    <Star size={14} className="text-neon-amber fill-neon-amber" />
                     <span 
                         key={stardust} // Triggers animation on change
                         className="text-amber-100 font-mono font-bold text-sm min-w-[3ch] text-right animate-bump"
@@ -66,11 +64,11 @@ export default function ObservatoryPage() {
                 </div>
 
                 {/* Shards */}
-                <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-full border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)] backdrop-blur-md">
-                    <Sparkles size={14} className="text-rose-500 fill-rose-500" />
+                <div className="flex items-center gap-2 bg-slate-900/60 px-4 py-2 rounded-full border border-neon-red/20 shadow-[0_0_15px_rgba(239,68,68,0.1)] backdrop-blur-md">
+                    <Sparkles size={14} className="text-neon-red fill-neon-red" />
                     <span 
                         key={cometShards} 
-                        className="text-rose-100 font-mono font-bold text-sm min-w-[3ch] text-right animate-bump"
+                        className="text-red-100 font-mono font-bold text-sm min-w-[3ch] text-right animate-bump"
                     >
                         {mounted ? cometShards : <div className="h-4 w-8 bg-white/10 rounded animate-pulse inline-block" />}
                     </span>
@@ -85,10 +83,10 @@ export default function ObservatoryPage() {
         {/* SECTION: HERO TITLE */}
         <div className="text-center space-y-6 py-8 relative">
            {/* Decorative Background Glow */}
-           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-indigo-500/10 blur-[100px] rounded-full pointer-events-none" />
+           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-violet-900/20 blur-[100px] rounded-full pointer-events-none" />
            
-           <div className="relative inline-flex justify-center items-center p-5 bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-full mb-2 ring-4 ring-indigo-500/5">
-                <Telescope size={40} className="text-indigo-400 drop-shadow-[0_0_10px_rgba(129,140,248,0.5)]" />
+           <div className="relative inline-flex justify-center items-center p-5 bg-gradient-to-br from-violet-900/20 to-purple-900/20 border border-violet-500/20 rounded-full mb-2 ring-4 ring-violet-500/5">
+                <Telescope size={40} className="text-violet-400 drop-shadow-[0_0_10px_rgba(139,92,246,0.5)]" />
            </div>
            
            <div className="space-y-2">
@@ -98,7 +96,7 @@ export default function ObservatoryPage() {
                 <p className="text-slate-400 max-w-lg mx-auto text-sm md:text-base leading-relaxed">
                     Unlock visual protocols to customize the neural interface.
                     <br/>
-                    <span className="inline-block mt-2 text-indigo-400/60 text-[10px] uppercase tracking-[0.2em] font-bold border border-indigo-500/20 px-2 py-1 rounded">
+                    <span className="inline-block mt-2 text-violet-400/60 text-[10px] uppercase tracking-[0.2em] font-bold border border-violet-500/20 px-2 py-1 rounded">
                         Cloud Sync Active
                     </span>
                 </p>
@@ -127,10 +125,10 @@ export default function ObservatoryPage() {
         {/* SECTION: PREMIUM THEMES */}
         <section className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
           <div className="flex items-center gap-4 mb-8">
-              <h2 className="text-rose-400/80 text-xs font-bold uppercase tracking-[0.2em] whitespace-nowrap flex items-center gap-2">
+              <h2 className="text-neon-red/80 text-xs font-bold uppercase tracking-[0.2em] whitespace-nowrap flex items-center gap-2">
                 <Sparkles size={12} /> Anomaly Class (Rare)
               </h2>
-              <div className="h-px flex-1 bg-gradient-to-r from-rose-500/30 to-transparent" />
+              <div className="h-px flex-1 bg-gradient-to-r from-neon-red/30 to-transparent" />
           </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">

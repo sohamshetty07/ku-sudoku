@@ -7,7 +7,6 @@ import Button from "@/components/ui/Button";
 import { 
   ArrowLeft, Volume2, VolumeX, ShieldAlert, 
   Eye, EyeOff, Eraser, Trash2, LogOut, AlertTriangle,
-  // [NEW] Icons for new settings
   Type, MousePointerClick, Sparkles
 } from "lucide-react";
 import { signOut } from "next-auth/react";
@@ -35,10 +34,9 @@ export default function SettingsPage() {
     // Actions
     clearGame,
     resetProgress,
-    logout // [NEW] Import logout action to clear local state
+    logout 
   } = useStore();
 
-  // 2. GET GALAXY RESET ACTION
   const { resetGalaxy } = useGalaxyStore();
 
   const [isResetting, setIsResetting] = useState(false);
@@ -46,7 +44,6 @@ export default function SettingsPage() {
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
   const [mounted, setMounted] = useState(false);
 
-  // Prevent Hydration mismatch for toggles
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -57,11 +54,9 @@ export default function SettingsPage() {
     
     setIsResetting(true);
     try {
-        // 3. WIPE BOTH STORES
-        resetGalaxy(); // Clears Planets & Stars
-        await resetProgress(); // Clears XP, Currency, Themes
+        resetGalaxy(); 
+        await resetProgress(); 
         
-        // Force hard reload to clear any lingering client state/cache
         window.location.href = "/"; 
     } catch (error) {
         console.error("Reset failed:", error);
@@ -71,21 +66,18 @@ export default function SettingsPage() {
     }
   };
 
-  // [NEW] Handle Secure Sign Out (Fixes persistence bug)
   const handleSignOut = () => {
-      // 1. Wipe Local Data
       logout();
-      // 2. Sign Out of NextAuth (Clears Session Cookie)
       signOut({ callbackUrl: '/' });
   };
 
   return (
-    <main className="min-h-screen bg-[#0F172A] text-slate-200 pb-[env(safe-area-inset-bottom)]">
+    <main className="min-h-screen bg-midnight text-slate-200 pb-[env(safe-area-inset-bottom)] animate-fade-in">
       
       {/* --- CONFIRMATION MODAL --- */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-            <div className="w-full max-w-md bg-slate-900 border border-red-500/30 rounded-2xl p-6 shadow-2xl shadow-red-900/20 transform transition-all scale-100">
+            <div className="w-full max-w-md bg-slate-900 border border-red-500/30 rounded-2xl p-6 shadow-2xl shadow-red-900/20 transform transition-all scale-100 animate-zoom-in">
                 <div className="flex items-center gap-3 text-red-500 mb-4">
                     <AlertTriangle size={28} />
                     <h2 className="text-xl font-bold font-mono tracking-wider">FACTORY RESET</h2>
@@ -105,7 +97,7 @@ export default function SettingsPage() {
                         value={deleteConfirmationText}
                         onChange={(e) => setDeleteConfirmationText(e.target.value)}
                         placeholder="DELETE"
-                        className="w-full bg-red-950/30 border border-red-500/30 rounded-lg p-3 text-red-200 placeholder:text-red-900/50 focus:outline-none focus:border-red-500 font-mono tracking-widest text-center uppercase"
+                        className="w-full bg-red-950/30 border border-red-500/30 rounded-lg p-3 text-red-200 placeholder:text-red-900/50 focus:outline-none focus:border-red-500 font-mono tracking-widest text-center uppercase transition-all"
                     />
                 </div>
 
@@ -138,16 +130,16 @@ export default function SettingsPage() {
         
         {/* HEADER */}
         <div className="flex items-center gap-4 pt-4 md:pt-0">
-            <Link href="/dashboard" className="p-3 rounded-full bg-slate-800/50 hover:bg-slate-700 active:scale-95 transition-all text-white/70 hover:text-white">
+            <Link href="/dashboard" className="p-3 rounded-full bg-slate-800/50 hover:bg-slate-700 active:scale-95 transition-all text-white/70 hover:text-white border border-white/5">
                 <ArrowLeft size={24} />
             </Link>
-            <h1 className="text-2xl md:text-3xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 tracking-widest">
+            <h1 className="text-2xl md:text-3xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-cyan to-blue-500 tracking-widest drop-shadow-sm">
                 SYSTEM SETTINGS
             </h1>
         </div>
 
         {/* SECTION 1: SENSORY INPUT */}
-        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl animate-slide-up" style={{ animationDelay: '0.1s' }}>
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">
                 Sensory Input
             </h2>
@@ -159,12 +151,11 @@ export default function SettingsPage() {
                 isActive={mounted && audioEnabled}
                 onToggle={toggleAudio}
                 activeColor="text-neon-cyan shadow-[0_0_15px_rgba(34,211,238,0.3)]"
-                knobColor="bg-cyan-400"
+                knobColor="bg-neon-cyan"
             />
             
             <div className="w-full h-px bg-white/5" />
 
-            {/* [NEW] Completion Highlights Toggle */}
             <ToggleRow 
                 icon={<Sparkles size={24} />}
                 title="Completion Effects"
@@ -177,12 +168,11 @@ export default function SettingsPage() {
         </section>
 
         {/* SECTION 2: NEURAL INTERFACE */}
-        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl animate-slide-up" style={{ animationDelay: '0.2s' }}>
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">
                 Neural Interface
             </h2>
             
-            {/* [NEW] Digit-First Input Toggle */}
             <ToggleRow 
                 icon={<MousePointerClick size={24} />}
                 title="Digit-First Input"
@@ -195,15 +185,14 @@ export default function SettingsPage() {
 
             <div className="w-full h-px bg-white/5" />
 
-            {/* [NEW] Large Text Toggle */}
             <ToggleRow 
                 icon={<Type size={24} />}
                 title="Large Text Mode"
                 subtitle="Enhanced visibility for grid numbers"
                 isActive={mounted && textSize === 'large'}
                 onToggle={toggleTextSize}
-                activeColor="text-orange-400 shadow-[0_0_15px_rgba(251,146,60,0.3)]"
-                knobColor="bg-orange-400"
+                activeColor="text-neon-amber shadow-[0_0_15px_rgba(251,146,60,0.3)]"
+                knobColor="bg-neon-amber"
             />
 
             <div className="w-full h-px bg-white/5" />
@@ -232,14 +221,14 @@ export default function SettingsPage() {
         </section>
 
         {/* SECTION 3: SESSION MANAGEMENT */}
-        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl">
+        <section className="bg-slate-900/50 backdrop-blur-md border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 shadow-xl animate-slide-up" style={{ animationDelay: '0.3s' }}>
              <h2 className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mb-4">
                 Session Link
             </h2>
             
             <div className="flex items-center justify-between group">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 rounded-2xl bg-slate-800 text-slate-400 group-hover:text-white transition-colors">
+                    <div className="p-3 rounded-2xl bg-slate-800 text-slate-400 group-hover:text-white transition-colors border border-white/5">
                         <LogOut size={24} />
                     </div>
                     <div>
@@ -257,7 +246,7 @@ export default function SettingsPage() {
         </section>
 
         {/* SECTION 4: DANGER ZONE */}
-        <section className="bg-red-500/5 border border-red-500/10 rounded-3xl p-6 md:p-8 space-y-8">
+        <section className="bg-red-500/5 border border-red-500/10 rounded-3xl p-6 md:p-8 space-y-8 animate-slide-up" style={{ animationDelay: '0.4s' }}>
             <h2 className="text-xs font-bold text-red-400/60 uppercase tracking-[0.2em] flex items-center gap-2">
                 <ShieldAlert size={14} /> Danger Zone
             </h2>
@@ -289,7 +278,7 @@ export default function SettingsPage() {
                 </div>
                 <button 
                   onClick={() => setShowDeleteModal(true)}
-                  className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white transition-all active:scale-90 border border-red-500/20 hover:border-red-500"
+                  className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-600 hover:text-white transition-all active:scale-90 border border-red-500/20 hover:border-red-500 shadow-lg shadow-red-900/10"
                   aria-label="Factory Reset"
                 >
                     <Trash2 size={20} />
@@ -298,7 +287,7 @@ export default function SettingsPage() {
         </section>
 
         {/* FOOTER INFO */}
-        <div className="text-center text-xs text-slate-700 font-mono pb-8">
+        <div className="text-center text-xs text-slate-700 font-mono pb-8 animate-fade-in" style={{ animationDelay: '0.5s' }}>
             KU-SUDOKU v1.0.4 • THE VOID PROTOCOL
         </div>
 
@@ -316,7 +305,7 @@ function ToggleRow({ icon, title, subtitle, isActive, onToggle, activeColor, kno
         >
             <div className="flex items-center gap-5">
                 <div className={`
-                    p-3 rounded-2xl transition-all duration-300
+                    p-3 rounded-2xl transition-all duration-300 border border-white/5
                     ${isActive ? `bg-slate-800 ${activeColor}` : 'bg-slate-800/50 text-slate-500'}
                 `}>
                     {icon}
@@ -335,7 +324,7 @@ function ToggleRow({ icon, title, subtitle, isActive, onToggle, activeColor, kno
             <div className={`
                 relative w-14 h-8 rounded-full transition-colors duration-300 ease-in-out
                 ${isActive ? 'bg-slate-700' : 'bg-slate-800'}
-                border border-white/5
+                border border-white/5 shadow-inner
             `}>
                 <div className={`
                     absolute top-1 left-1 w-6 h-6 rounded-full shadow-lg transform transition-transform duration-300 cubic-bezier(0.4, 0.0, 0.2, 1)

@@ -4,7 +4,10 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import Link from "next/link";
 import { useGalaxyStore, SOLAR_SYSTEM, type CelestialNode } from "@/lib/store/galaxy";
 import { useStore } from "@/lib/store"; 
-import { ArrowLeft, Plus, Minus, Lock, Star, Sparkles, Navigation, Info, ShieldAlert, Cpu, CheckCircle } from "lucide-react";
+import { 
+  ArrowLeft, Plus, Minus, Lock, Star, Sparkles, Navigation, 
+  Info, ShieldAlert, Cpu, CheckCircle, Orbit 
+} from "lucide-react";
 import Button from "@/components/ui/Button";
 import { playSfx } from "@/lib/audio";
 
@@ -227,7 +230,7 @@ export default function AstralChartPage() {
   };
 
   return (
-    <main className="relative w-full h-screen bg-[#000510] overflow-hidden overscroll-none touch-none select-none">
+    <main className="relative w-full h-screen bg-black overflow-hidden overscroll-none touch-none select-none">
       
       {/* 1. BACKGROUND */}
       <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none z-0" />
@@ -311,15 +314,15 @@ export default function AstralChartPage() {
 
       {/* 3. HUD */}
       <div className="absolute top-0 left-0 w-full p-4 pt-[max(1rem,env(safe-area-inset-top))] flex justify-between items-start pointer-events-none z-50">
-          <Link href="/dashboard" className="pointer-events-auto p-3 rounded-full bg-slate-900/50 backdrop-blur-md border border-white/10 text-white hover:bg-white/10 shadow-lg"><ArrowLeft size={24} /></Link>
+          <Link href="/dashboard" className="pointer-events-auto p-3 rounded-full bg-midnight/50 backdrop-blur-md border border-white/10 text-white hover:bg-white/10 shadow-lg"><ArrowLeft size={24} /></Link>
           <div className="flex flex-col items-end gap-2">
-               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/80 backdrop-blur-md border border-amber-500/20 shadow-lg animate-fade-in-right"><Star size={14} className="text-amber-400 fill-amber-400" /><span className="font-mono font-bold text-amber-100">{stardust}</span></div>
-               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-900/80 backdrop-blur-md border border-rose-500/20 shadow-lg animate-fade-in-right delay-100"><Sparkles size={14} className="text-rose-500 fill-rose-500" /><span className="font-mono font-bold text-rose-100">{cometShards}</span></div>
+               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-midnight/80 backdrop-blur-md border border-neon-amber/20 shadow-lg animate-fade-in"><Star size={14} className="text-neon-amber fill-neon-amber" /><span className="font-mono font-bold text-amber-100">{stardust}</span></div>
+               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-midnight/80 backdrop-blur-md border border-neon-red/20 shadow-lg animate-fade-in delay-100"><Sparkles size={14} className="text-neon-red fill-neon-red" /><span className="font-mono font-bold text-red-100">{cometShards}</span></div>
           </div>
       </div>
       <div className="absolute bottom-8 right-4 flex flex-col gap-2 z-50 pb-[env(safe-area-inset-bottom)]">
-          <button onClick={centerCamera} className="p-3 rounded-full bg-slate-800/80 border border-white/10 text-white hover:bg-white/20 active:scale-95 shadow-xl"><Navigation size={20} /></button>
-          <div className="flex flex-col rounded-full bg-slate-800/80 border border-white/10 overflow-hidden shadow-xl">
+          <button onClick={centerCamera} className="p-3 rounded-full bg-midnight/80 border border-white/10 text-white hover:bg-white/20 active:scale-95 shadow-xl"><Navigation size={20} /></button>
+          <div className="flex flex-col rounded-full bg-midnight/80 border border-white/10 overflow-hidden shadow-xl">
              <button onClick={() => handleZoom(0.5)} className="p-3 hover:bg-white/20 active:scale-95 border-b border-white/10 text-white"><Plus size={20} /></button>
              <button onClick={() => handleZoom(-0.5)} className="p-3 hover:bg-white/20 active:scale-95 text-white"><Minus size={20} /></button>
           </div>
@@ -328,7 +331,7 @@ export default function AstralChartPage() {
       {/* 4. MODAL */}
       {selectedNode && (
         <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 animate-fade-in">
-           <div className="w-full max-w-sm bg-[#0F172A] border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden transition-all duration-500">
+           <div className="w-full max-w-sm bg-midnight/95 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden transition-all duration-500">
                
                {/* Ambient Glow */}
                <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full opacity-15 blur-[80px] pointer-events-none" style={{ backgroundColor: selectedNode.color }} />
@@ -340,7 +343,7 @@ export default function AstralChartPage() {
                        <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500 font-bold bg-white/5 px-2 py-1 rounded">{selectedNode.type}</span>
                             {!isCurrentUnlocked && (
-                                <span className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-red-400 bg-red-500/10 px-2 py-1 rounded border border-red-500/20"><Lock size={10} /> Locked</span>
+                                <span className="flex items-center gap-1 text-[10px] uppercase tracking-widest text-neon-red bg-red-500/10 px-2 py-1 rounded border border-red-500/20"><Lock size={10} /> Locked</span>
                             )}
                        </div>
                    </div>
@@ -407,7 +410,7 @@ export default function AstralChartPage() {
                        </Button>
                    ) : (
                        <div className="p-3 rounded-xl bg-red-500/5 border border-red-500/10 text-center">
-                           <p className="text-xs text-red-400/60 uppercase tracking-widest font-bold">Orbit Unreachable</p>
+                           <p className="text-xs text-neon-red/60 uppercase tracking-widest font-bold">Orbit Unreachable</p>
                            <p className="text-[10px] text-slate-500 mt-1">Link previous node first</p>
                        </div>
                    )}

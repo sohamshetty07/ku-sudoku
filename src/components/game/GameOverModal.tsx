@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from "react";
 import Button from "@/components/ui/Button";
 import Link from "next/link";
-import { XCircle, RefreshCw, Home } from "lucide-react";
+import { XCircle, RefreshCw, Home, Hexagon } from "lucide-react";
+import { useStore } from "@/lib/store"; // [NEW] Import Store
 
 type GameOverModalProps = {
   onRetry: () => void;
@@ -11,6 +12,7 @@ type GameOverModalProps = {
 
 export default function GameOverModal({ onRetry, isExpedition = false }: GameOverModalProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const { expedition } = useStore(); // [NEW] Access Store for stats
 
   // Trigger animation on mount
   useEffect(() => {
@@ -18,7 +20,7 @@ export default function GameOverModal({ onRetry, isExpedition = false }: GameOve
   }, []);
 
   return (
-    // 1. Backdrop (High Z-Index to cover everything)
+    // Backdrop
     <div 
         className={`
             fixed inset-0 z-[100] flex items-center justify-center 
@@ -30,7 +32,7 @@ export default function GameOverModal({ onRetry, isExpedition = false }: GameOve
         aria-modal="true"
     >
       
-      {/* 2. Modal Card */}
+      {/* Modal Card */}
       <div 
         className={`
             w-[90%] max-w-sm transform rounded-3xl 
@@ -56,14 +58,24 @@ export default function GameOverModal({ onRetry, isExpedition = false }: GameOve
                 {isExpedition ? "SIGNAL LOST" : "PROTOCOL FAILED"}
             </h2>
             
+            {/* [NEW] Expedition Stats */}
+            {isExpedition && (
+                <div className="mb-6 flex items-center justify-center gap-2 text-indigo-300 bg-indigo-500/10 py-1 px-3 rounded-full w-fit mx-auto border border-indigo-500/20">
+                    <Hexagon size={14} />
+                    <span className="text-xs font-bold tracking-widest uppercase">
+                        Reached Sector {expedition.sector}
+                    </span>
+                </div>
+            )}
+            
             <p className="mb-8 text-sm text-slate-400 font-sans leading-relaxed max-w-[240px] mx-auto">
                 {isExpedition 
-                  ? "Your vessel's integrity has been compromised. The expedition ends here." 
+                  ? "Your vessel's integrity has been compromised. The Void reclaims your artifacts." 
                   : "Too many errors detected. The Void has consumed this pattern."}
             </p>
             
             <div className="space-y-3">
-                {/* Retry Button - Only available for standard modes (Not Roguelike) */}
+                {/* Retry Button - Only available for standard modes */}
                 {!isExpedition && (
                     <Button 
                         variant="primary" 
@@ -78,7 +90,7 @@ export default function GameOverModal({ onRetry, isExpedition = false }: GameOve
                     </Button>
                 )}
 
-                {/* Exit Link - Dynamic destination */}
+                {/* Exit Link */}
                 <Link href={isExpedition ? "/expedition" : "/dashboard"} className="block w-full">
                     <Button variant="secondary" fullWidth className="border-white/10 hover:bg-white/5 text-slate-400 hover:text-white">
                         <div className="flex items-center justify-center gap-2">

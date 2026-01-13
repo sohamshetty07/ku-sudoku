@@ -4,10 +4,9 @@ import Button from "@/components/ui/Button";
 import Link from "next/link";
 import { 
   Trophy, Clock, Zap, Activity, ArrowUp, Star, Sparkles, Globe, 
-  ArrowRight, Hexagon, RotateCcw, Home
+  ArrowRight, Hexagon, RotateCcw, Home, Flame
 } from "lucide-react";
 
-// Define the type locally if not available in a separate file yet
 export type RewardSummary = {
   xp: number;
   stardust: number;
@@ -23,7 +22,6 @@ type VictoryModalProps = {
   cellTimes?: Record<string, number>; 
   rewards?: RewardSummary | null; 
   finalBoard?: number[][];
-  // [NEW] Expedition Props
   isExpedition?: boolean;
   nextSector?: number; 
 };
@@ -42,17 +40,14 @@ export default function VictoryModal({
   rewards,
   isExpedition = false,
   nextSector,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  finalBoard,
 }: VictoryModalProps) {
   
   const [showHeatmap, setShowHeatmap] = useState(false);
   
-  // Rolling Counters State
+  // Rolling Counters
   const [displayedXp, setDisplayedXp] = useState(0);
   const [displayedStardust, setDisplayedStardust] = useState(0);
 
-  // Animation Effect for Counters
   useEffect(() => {
     if (!rewards) return;
 
@@ -210,12 +205,26 @@ export default function VictoryModal({
                 {/* BONUSES PILLS */}
                 {rewards.bonuses.length > 0 && (
                     <div className="flex flex-wrap gap-2 justify-center pt-2">
-                        {rewards.bonuses.map((bonus, i) => (
-                            <div key={i} className="flex items-center gap-1.5 text-[10px] font-bold bg-slate-800 text-slate-300 px-3 py-1 rounded-full border border-white/5 shadow-sm">
-                                {bonus.includes("Mercury") || bonus.includes("Earth") ? <Globe size={10} className="text-cyan-400" /> : <Sparkles size={10} className="text-amber-400" />}
-                                {bonus}
-                            </div>
-                        ))}
+                        {rewards.bonuses.map((bonus, i) => {
+                            let icon = <Sparkles size={10} className="text-amber-400" />;
+                            let colorClass = "text-slate-300 border-white/5";
+
+                            if (bonus.includes("Mercury")) {
+                                icon = <Globe size={10} className="text-cyan-400" />;
+                                colorClass = "text-cyan-100 border-cyan-500/20 bg-cyan-950/30";
+                            }
+                            if (bonus.includes("Mars")) {
+                                icon = <Flame size={10} className="text-red-500" />;
+                                colorClass = "text-red-100 border-red-500/20 bg-red-950/30";
+                            }
+
+                            return (
+                                <div key={i} className={`flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full border shadow-sm ${colorClass}`}>
+                                    {icon}
+                                    {bonus}
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
               </div>
