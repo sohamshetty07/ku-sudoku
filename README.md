@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ku Sudoku: The Void Protocol 🌌
 
-## Getting Started
+![Project Status](https://img.shields.io/badge/Status-Production-success)
+![Tech Stack](https://img.shields.io/badge/Stack-Next.js%20%7C%20TypeScript%20%7C%20MongoDB-blue)
+![License](https://img.shields.io/badge/License-MIT-purple)
 
-First, run the development server:
+**Ku Sudoku** is not just a logic puzzle; it is a cosmic survival expedition.
+
+This project reimagines the classic Sudoku experience by fusing it with **Roguelike progression systems**, a vast **unlockable galaxy**, and a high-fidelity **"Cosmic Glass" UI**. Built with the latest web technologies, it features real-time cloud sync, PWA support, and a procedural economy.
+
+[**🚀 Play the Live Demo**](https://your-vercel-url.com) _(Replace with your link)_
+
+---
+
+## ✨ Key Features
+
+### 🎮 Gamified Logic
+
+- **Expedition Mode (Roguelike):** A survival mode where you warp through sectors. One mistake costs a life. Permadeath rules apply to the run, but you keep your currency.
+- **The Astral Chart:** A massive skill tree visualized as a galaxy. Spend Stardust to unlock planets (Nodes) that grant permanent passive buffs (e.g., _Jupiter: +10% XP gain_).
+- **Artifact System:** Equip powerful tech like _Auto-Fillers_, _Shield Generators_, and _Scanners_ to break the rules of Sudoku during difficult runs.
+
+### 💎 Economy & Customization
+
+- **The Observatory (Shop):** Spend **Stardust** (Common) and **Comet Shards** (Rare) to buy stunning visual themes.
+- **Dynamic Themes:** Supports standard color palettes and "Mythic" themes like _Eternity_ which features fluid, animated gradients.
+- **Void Market:** A shop that appears between Expedition sectors to repair your hull or buy emergency supplies.
+
+### 🛠 Technical Highlights
+
+- **Cloud Sync:** Seamlessly switch between Mobile and Desktop. Your progress (XP, Inventory, Stats) syncs automatically via MongoDB.
+- **PWA Support:** Installable as a native app on iOS/Android with full offline capabilities (Logic engine runs on Web Workers).
+- **Performance:** 60FPS animations using Tailwind CSS hardware acceleration and Framer Motion.
+- **Social:** Global Leaderboards (ELO System) and Daily Challenges generated server-side.
+
+---
+
+## 🏗️ Tech Stack
+
+- **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
+- **Language:** [TypeScript](https://www.typescriptlang.org/)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/) + [Framer Motion](https://www.framer.com/motion/)
+- **Database:** [MongoDB](https://www.mongodb.com/) (Mongoose)
+- **Auth:** [NextAuth.js](https://next-auth.js.org/)
+- **State Management:** Zustand (Local) + React Query (Server)
+- **Icons:** Lucide React
+
+---
+
+## 🚀 Getting Started
+
+Follow these steps to run the "Void Protocol" locally.
+
+### Prerequisites
+
+- Node.js 18+
+- MongoDB Cluster (Atlas or Local)
+
+### Installation
+
+1.  **Clone the repository**
+
+    ```bash
+    git clone [https://github.com/sohamshetty07/ku-sudoku.git](https://github.com/sohamshetty07/ku-sudoku.git)
+    cd ku-sudoku
+    ```
+
+2.  **Install dependencies**
+
+    ```bash
+    npm install
+    ```
+
+3.  **Environment Setup**
+    Create a `.env.local` file in the root directory and add the following:
+
+    ```bash
+    # Database
+    MONGODB_URI=your_mongodb_connection_string
+
+    # Auth (Generate a random string: openssl rand -base64 32)
+    NEXTAUTH_SECRET=your_random_secret_string
+    NEXTAUTH_URL=http://localhost:3000
+
+    # Optional: Google OAuth (if you enable social login later)
+    GOOGLE_CLIENT_ID=...
+    GOOGLE_CLIENT_SECRET=...
+    ```
+
+4.  **Run the Development Server**
+
+    ```bash
+    npm run dev
+    ```
+
+5.  **Build for Production**
+    ```bash
+    npm run build
+    npm start
+    ```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to enter the Void.
+
+---
+
+## 📂 Project Structure
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+src/
+├── app/                  # Next.js App Router Pages
+│   ├── api/              # Serverless Functions (Sync, Auth, Leaderboard)
+│   ├── game/             # The Core Sudoku Game Logic
+│   ├── expedition/       # Roguelike Mode Logic
+│   ├── astral/           # Galaxy/Skill Tree View
+│   └── dashboard/        # Main Hub
+├── components/           # Reusable UI Components
+│   ├── ui/               # Buttons, Modals, Cards (Atomic Design)
+│   └── layout/           # ThemeManager, Navbar
+├── lib/
+│   ├── sudoku/           # Sudoku Generation & Solver Algorithms (WASM/JS)
+│   ├── db/               # Mongoose Models (User.ts)
+│   └── store/            # Zustand State Stores (game.ts, theme.ts)
+└── public/               # Static Assets & PWA Manifest
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
