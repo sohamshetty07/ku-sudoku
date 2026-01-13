@@ -47,8 +47,8 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "Ku Sudoku",
-    title: "Ku | The Void Protocol",
-    description: "Master the grid. Unlock the themes.",
+    title: "Ku | Sudoku Game",
+    description: "Master the grid. Unlock the levels.",
     // images: [{ url: '/og-image.png' }], // Add this later for polish
   },
   twitter: {
