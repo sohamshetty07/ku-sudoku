@@ -18,14 +18,13 @@ export interface GameState {
   history: { board: number[][]; notes: Record<string, number[]> }[];
   mistakes: number;
   timeElapsed: number;
-  // [UPDATED] Added 'Expedition' to Difficulty Type
   difficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition';
   cellTimes: Record<string, number>; 
   isGameOver?: boolean;
   isWon?: boolean;
 }
 
-// [NEW] EXPEDITION STATE INTERFACE
+// EXPEDITION STATE INTERFACE
 export interface ExpeditionState {
   isActive: boolean;
   sector: number; // Current Level (1, 2, 3...)
@@ -80,7 +79,6 @@ interface UserStore {
     Mastery: number | null;
   };
   statsLastUpdated: number;
-  // [UPDATED] Added Expedition to mode union
   incrementStats: (isWin: boolean, mode: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition', time: number, mistakes: number) => void;
 
   // 4. GAME STATE
@@ -88,7 +86,7 @@ interface UserStore {
   saveGame: (game: GameState) => void;
   clearGame: () => void;
 
-  // [NEW] EXPEDITION ACTIONS
+  // EXPEDITION ACTIONS
   expedition: ExpeditionState;
   startExpedition: (artifacts: string[], initialLives?: number) => void;
   updateExpedition: (updates: Partial<ExpeditionState>) => void;
@@ -103,7 +101,6 @@ interface UserStore {
   closeDailyRewardModal: () => void;
 
   // VISUALS
-  // [UPDATED] Added 'Expedition'
   themeDifficulty: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition';
   setThemeDifficulty: (diff: 'Relaxed' | 'Standard' | 'Mastery' | 'Daily' | 'Expedition') => void;
   activeThemeId: string;
@@ -121,6 +118,7 @@ interface UserStore {
   inputMode: 'cell-first' | 'digit-first';
   textSize: 'standard' | 'large';
   highlightCompletions: boolean;
+  zenMode: boolean; // [NEW] Zen Mode State
   settingsLastUpdated: number;
 
   toggleAudio: () => void;
@@ -129,6 +127,7 @@ interface UserStore {
   toggleInputMode: () => void;
   toggleTextSize: () => void;
   toggleHighlightCompletions: () => void;
+  toggleZenMode: () => void; // [NEW] Toggle Action
 
   // SYSTEM ACTIONS
   resetProgress: () => Promise<void>; 
@@ -172,7 +171,7 @@ export const useStore = create<UserStore>()(
       currentStreak: 0,
       lastPlayedDate: null,
 
-      // [NEW] EXPEDITION DEFAULTS
+      // EXPEDITION DEFAULTS
       expedition: {
         isActive: false,
         sector: 1,
@@ -188,6 +187,7 @@ export const useStore = create<UserStore>()(
       inputMode: 'cell-first',
       textSize: 'standard',
       highlightCompletions: true,
+      zenMode: false, // [NEW] Default off
       settingsLastUpdated: 0,
 
       // --- LOGIC ---
@@ -295,8 +295,6 @@ export const useStore = create<UserStore>()(
           const isFlawless = mistakes === 0;
           const newFlawlessWins = isFlawless ? state.flawlessWins + 1 : state.flawlessWins;
 
-          // Only track best times for standard modes
-          // Skip Daily (tracked on server) and Expedition (tracked via Sectors)
           if (mode !== 'Daily' && mode !== 'Expedition') {
               const currentBest = state.bestTimes[mode];
               let newBestTime = currentBest;
@@ -334,7 +332,7 @@ export const useStore = create<UserStore>()(
         isDirty: true
       })),
 
-      // [NEW] EXPEDITION ACTIONS
+      // EXPEDITION ACTIONS
       startExpedition: (artifacts, initialLives = 3) => set({
         expedition: {
           isActive: true,
@@ -370,7 +368,6 @@ export const useStore = create<UserStore>()(
         const isVenusUnlocked = useGalaxyStore.getState().isNodeUnlocked('venus');
         const stardustBonus = isVenusUnlocked ? 50 : 0;
 
-        // If bonus earned, add transaction
         let transactions = state.pendingTransactions;
         if (stardustBonus > 0) {
              transactions = [...transactions, {
@@ -398,6 +395,7 @@ export const useStore = create<UserStore>()(
       toggleInputMode: () => set((state) => ({ inputMode: state.inputMode === 'cell-first' ? 'digit-first' : 'cell-first', settingsLastUpdated: Date.now(), isDirty: true })),
       toggleTextSize: () => set((state) => ({ textSize: state.textSize === 'standard' ? 'large' : 'standard', settingsLastUpdated: Date.now(), isDirty: true })),
       toggleHighlightCompletions: () => set((state) => ({ highlightCompletions: !state.highlightCompletions, settingsLastUpdated: Date.now(), isDirty: true })),
+      toggleZenMode: () => set((state) => ({ zenMode: !state.zenMode, settingsLastUpdated: Date.now(), isDirty: true })), // [NEW] Toggle implementation
 
       logout: () => {
         set({
@@ -413,8 +411,7 @@ export const useStore = create<UserStore>()(
           audioEnabled: true, timerVisible: true, autoEraseNotes: true,
           inputMode: 'cell-first', textSize: 'standard', highlightCompletions: true, settingsLastUpdated: 0,
           pendingTransactions: [],
-          
-          // Reset Expedition
+          zenMode: false, // [NEW] Reset
           expedition: {
             isActive: false,
             sector: 1,
@@ -423,7 +420,6 @@ export const useStore = create<UserStore>()(
             artifacts: [],
             artifactState: {}
           },
-          
           isDirty: false
         });
         useGalaxyStore.getState().resetGalaxy();
@@ -450,16 +446,13 @@ export const useStore = create<UserStore>()(
         const galaxyState = useGalaxyStore.getState();
         
         const payload = {
-          // --- DATA + TIMESTAMPS ---
           elo: state.elo,
           eloLastUpdated: state.eloLastUpdated,
           xp: state.xp,
           xpLastUpdated: state.xpLastUpdated,
           
-          // [NEW] Send Transactions
           transactions: state.pendingTransactions,
           
-          // Legacy fallbacks (for display consistency if sync fails)
           stardust: state.stardust,
           cometShards: state.cometShards,
           currencyLastUpdated: state.currencyLastUpdated,
@@ -485,6 +478,7 @@ export const useStore = create<UserStore>()(
             inputMode: state.inputMode,
             textSize: state.textSize,
             highlightCompletions: state.highlightCompletions,
+            zenMode: state.zenMode, // [NEW] Sync setting
           },
           settingsLastUpdated: state.settingsLastUpdated,
 
@@ -508,12 +502,10 @@ export const useStore = create<UserStore>()(
              const pref = u.settings || {};
              const g = u.galaxy || {}; 
 
-             // [NEW] Clear processed transactions
              if (data.processedTransactionIds) {
                  get().clearProcessedTransactions(data.processedTransactionIds);
              }
 
-             // SERVER MERGE LOGIC (Smart Merge)
              set((prev) => ({
                elo: p.eloLastUpdated > prev.eloLastUpdated ? p.elo : prev.elo,
                eloLastUpdated: Math.max(p.eloLastUpdated, prev.eloLastUpdated),
@@ -521,21 +513,18 @@ export const useStore = create<UserStore>()(
                xp: p.xpLastUpdated > prev.xpLastUpdated ? p.xp : prev.xp,
                xpLastUpdated: Math.max(p.xpLastUpdated, prev.xpLastUpdated),
                
-               // [UPDATED] Trust server balance (calculated from transactions)
                stardust: p.stardust,
                cometShards: p.cometShards,
-               currencyLastUpdated: Date.now(), // Synced
+               currencyLastUpdated: Date.now(), 
 
                unlockedThemes: p.themesLastUpdated > prev.themesLastUpdated ? p.unlockedThemes : prev.unlockedThemes,
                themesLastUpdated: Math.max(p.themesLastUpdated, prev.themesLastUpdated),
 
-               // Stats Merge
                gamesPlayed: s.statsLastUpdated > prev.statsLastUpdated ? s.gamesPlayed : prev.gamesPlayed,
                gamesWon: s.statsLastUpdated > prev.statsLastUpdated ? s.gamesWon : prev.gamesWon,
                flawlessWins: s.statsLastUpdated > prev.statsLastUpdated ? s.flawlessWins : prev.flawlessWins,
                currentStreak: s.statsLastUpdated > prev.statsLastUpdated ? s.currentStreak : prev.currentStreak,
                lastPlayedDate: s.statsLastUpdated > prev.statsLastUpdated ? s.lastPlayedDate : prev.lastPlayedDate,
-               
                statsLastUpdated: Math.max(s.statsLastUpdated, prev.statsLastUpdated),
 
                // Settings Merge
@@ -546,6 +535,7 @@ export const useStore = create<UserStore>()(
                inputMode: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.inputMode : prev.inputMode,
                textSize: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.textSize : prev.textSize,
                highlightCompletions: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.highlightCompletions : prev.highlightCompletions,
+               zenMode: pref.settingsLastUpdated > prev.settingsLastUpdated ? pref.zenMode : prev.zenMode, // [NEW] Merge setting
                
                settingsLastUpdated: Math.max(pref.settingsLastUpdated, prev.settingsLastUpdated),
 

@@ -33,6 +33,7 @@ export async function POST(req: Request) {
     const g = user.galaxy;
 
     // --- HELPER: TIMESTAMP MERGE LOGIC ---
+    // Returns true if client data is newer than server data
     const shouldUpdate = (clientTs: number | undefined, serverTs: number | undefined) => {
         const c = clientTs || 0;
         const sv = serverTs || 0;
@@ -41,23 +42,23 @@ export async function POST(req: Request) {
 
     // --- 1. PROGRESSION MERGE ---
 
-    // A. ELO (Skill) - Max Strategy/Newest
+    // A. ELO & XP (Max/Newest Strategy)
     if (shouldUpdate(body.eloLastUpdated, p.eloLastUpdated)) {
         p.elo = body.elo;
         p.eloLastUpdated = body.eloLastUpdated;
     }
 
-    // B. XP (Experience)
     if (shouldUpdate(body.xpLastUpdated, p.xpLastUpdated)) {
         p.xp = body.xp;
         p.xpLastUpdated = body.xpLastUpdated;
     }
 
-    // C. [NEW] TRANSACTION PROCESSING (Currency Robustness)
-    // Instead of overwriting Stardust, we apply "Deltas" (Spent/Earned)
+    // B. TRANSACTION PROCESSING (Conflict Resolution)
+    // We replay specific actions (Spend/Earn) rather than overwriting totals.
     const transactions = body.transactions || [];
     const processedIds: string[] = [];
     let currencyModified = false;
+    let themesModified = false;
 
     if (transactions.length > 0) {
         for (const tx of transactions) {
@@ -68,42 +69,47 @@ export async function POST(req: Request) {
                     if (type === 'cometShards') p.cometShards = (p.cometShards || 0) + amount;
                     currencyModified = true;
                 }
-                if (tx.type === 'SPEND_CURRENCY') {
+                else if (tx.type === 'SPEND_CURRENCY') {
                     const { type, amount } = tx.payload;
-                    // Prevent negative balances
+                    // Prevent negative balances on server
                     if (type === 'stardust') p.stardust = Math.max(0, (p.stardust || 0) - amount);
                     if (type === 'cometShards') p.cometShards = Math.max(0, (p.cometShards || 0) - amount);
                     currencyModified = true;
                 }
-                // (Themes are handled by Union below, so we just acknowledge the tx)
+                else if (tx.type === 'UNLOCK_THEME') {
+                    const { themeId } = tx.payload;
+                    if (!p.unlockedThemes.includes(themeId)) {
+                        p.unlockedThemes.push(themeId);
+                        themesModified = true;
+                    }
+                }
                 processedIds.push(tx.id);
             } catch (e) {
                 console.warn(`Failed to process transaction ${tx.id}`, e);
             }
         }
         
-        if (currencyModified) {
-            // Update timestamp so other devices know server is newest
-            p.currencyLastUpdated = Date.now();
-        }
+        if (currencyModified) p.currencyLastUpdated = Date.now();
+        if (themesModified) p.themesLastUpdated = Date.now();
     } 
-    // Fallback: If no transactions, use standard Timestamp Sync (e.g. for initial setup)
-    else if (shouldUpdate(body.currencyLastUpdated, p.currencyLastUpdated)) {
-        p.stardust = body.stardust;
-        p.cometShards = body.cometShards;
-        p.currencyLastUpdated = body.currencyLastUpdated;
+    // Fallback: If no transactions, use Timestamp Sync (e.g. initial setup)
+    else {
+        if (shouldUpdate(body.currencyLastUpdated, p.currencyLastUpdated)) {
+            p.stardust = body.stardust;
+            p.cometShards = body.cometShards;
+            p.currencyLastUpdated = body.currencyLastUpdated;
+        }
     }
 
-    // D. THEMES (Union Strategy)
+    // C. THEMES (Union Strategy - Fallback)
+    // Even if processed via transaction, ensure list is consistent
     const incomingThemes = body.unlockedThemes || [];
-    let themesChanged = false;
     incomingThemes.forEach((t: string) => {
       if (!p.unlockedThemes.includes(t)) {
         p.unlockedThemes.push(t);
-        themesChanged = true;
       }
     });
-    if (themesChanged || shouldUpdate(body.themesLastUpdated, p.themesLastUpdated)) {
+    if (shouldUpdate(body.themesLastUpdated, p.themesLastUpdated)) {
         p.themesLastUpdated = body.themesLastUpdated || Date.now();
     }
 
@@ -116,6 +122,7 @@ export async function POST(req: Request) {
         s.currentStreak = incStats.currentStreak ?? s.currentStreak;
         s.lastPlayedDate = incStats.lastPlayedDate ?? s.lastPlayedDate;
         
+        // Map nested bestTimes to flat DB fields
         if (incStats.bestTimes) {
             s.bestTimeRelaxed = incStats.bestTimes.Relaxed ?? s.bestTimeRelaxed;
             s.bestTimeStandard = incStats.bestTimes.Standard ?? s.bestTimeStandard;
@@ -123,17 +130,18 @@ export async function POST(req: Request) {
         }
         s.statsLastUpdated = body.statsLastUpdated;
     } else {
-        // "Min Strategy" fallback for Best Times (always keep fastest record)
-        const mergeBestTime = (field: string, incoming: number | null) => {
-            if (!incoming) return;
-            // @ts-ignore
-            const current = s[field];
-            if (current === null || incoming < current) s[field] = incoming;
-        };
+        // "Min Strategy" Fallback: Always keep the fastest time recorded
         if (body.stats?.bestTimes) {
-            mergeBestTime('bestTimeRelaxed', body.stats.bestTimes.Relaxed);
-            mergeBestTime('bestTimeStandard', body.stats.bestTimes.Standard);
-            mergeBestTime('bestTimeMastery', body.stats.bestTimes.Mastery);
+            const checkBetter = (dbField: string, incomingVal: number | null) => {
+                // @ts-ignore
+                if (incomingVal && (s[dbField] === null || incomingVal < s[dbField])) {
+                    // @ts-ignore
+                    s[dbField] = incomingVal;
+                }
+            };
+            checkBetter('bestTimeRelaxed', body.stats.bestTimes.Relaxed);
+            checkBetter('bestTimeStandard', body.stats.bestTimes.Standard);
+            checkBetter('bestTimeMastery', body.stats.bestTimes.Mastery);
         }
     }
 
@@ -147,6 +155,7 @@ export async function POST(req: Request) {
         set.inputMode = incSet.inputMode ?? set.inputMode;
         set.textSize = incSet.textSize ?? set.textSize;
         set.highlightCompletions = incSet.highlightCompletions ?? set.highlightCompletions;
+        set.zenMode = incSet.zenMode ?? set.zenMode; // [NEW] Zen Mode Sync
         set.settingsLastUpdated = body.settingsLastUpdated;
     }
 
@@ -162,6 +171,7 @@ export async function POST(req: Request) {
       if (!existingStarIds.has(star.id)) g.historyStars.push(star);
     });
     
+    // Cap star history to prevent DB bloat
     if (g.historyStars.length > 500) {
         g.historyStars = g.historyStars.slice(g.historyStars.length - 500);
     }
@@ -180,7 +190,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ 
       success: true, 
       user,
-      processedTransactionIds: processedIds // Client will clear these from queue
+      processedTransactionIds: processedIds // Return processed IDs to clear client queue
     });
 
   } catch (error) {

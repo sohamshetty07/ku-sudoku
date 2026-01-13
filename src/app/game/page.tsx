@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, Suspense, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation"; 
-import { generateSudoku, generateDailyBoard } from "@/lib/sudoku/generator";
 import { useStore, type GameState } from "@/lib/store"; 
 import { useGalaxyStore } from "@/lib/store/galaxy"; 
 import SudokuGrid from "@/components/game/SudokuGrid";
@@ -13,12 +12,13 @@ import LevelUpModal from "@/components/progression/LevelUpModal";
 import DailyRewardModal from "@/components/game/DailyRewardModal"; 
 import GameSettingsModal from "@/components/game/GameSettingsModal";
 import ExpeditionIntermissionModal from "@/components/game/ExpeditionIntermissionModal";
-import ArtifactInfoModal from "@/components/game/ArtifactInfoModal"; // [NEW] Import
+import ArtifactInfoModal from "@/components/game/ArtifactInfoModal"; 
+import GameTimer from "@/components/game/GameTimer"; 
 import Button from "@/components/ui/Button";
 import { calculateGameRewards } from "@/lib/progression/rewards"; 
 import { RANKS, ARTIFACTS, type Artifact } from "@/lib/progression/constants";
 import { playSfx } from "@/lib/audio"; 
-import { Settings, Hexagon, Shield, Zap, Skull, Hourglass, Eye, Anchor, Sparkles } from "lucide-react";
+import { Settings, Hexagon, Shield, Zap, Skull, Hourglass, Eye, Anchor, Sparkles, Heart } from "lucide-react";
 
 // --- CONFIGURATION RULES ---
 const GAME_CONFIG = {
@@ -30,12 +30,6 @@ const GAME_CONFIG = {
 };
 
 type GameMode = keyof typeof GAME_CONFIG;
-
-const formatTime = (seconds: number) => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
-};
 
 // Helper to Calculate Completed Areas (Row/Col/Box)
 const getCompletedRegions = (board: number[][], solution: number[][]) => {
@@ -101,6 +95,7 @@ function GameContent() {
     inputMode,
     highlightCompletions,
     pushSync,
+    zenMode, // [NEW] Zen Mode Setting
     // EXPEDITION STORE
     expedition,
     updateExpedition,
@@ -122,12 +117,7 @@ function GameContent() {
       ? expedition.maxLives 
       : activeMode === 'Relaxed' ? Infinity : (activeMode === 'Mastery' ? 2 : maxMistakes);
 
-  const currentMistakes = isExpedition 
-      ? (expedition.maxLives - expedition.lives) 
-      : undefined;
-
   // --- STATE ---
-  // Note: We handle 'mounted' in the parent wrapper now, but keeping this for internal logic won't hurt.
   const [mounted, setMounted] = useState(false); 
   const [initialBoard, setInitialBoard] = useState<number[][] | null>(null);
   const [boardState, setBoardState] = useState<number[][] | null>(null);
@@ -146,7 +136,8 @@ function GameContent() {
   // Refs
   const cellTimesRef = useRef<Record<string, number>>({});
   const timeRef = useRef(0);
-  const [timeElapsed, setTimeElapsed] = useState<number>(0); 
+  const [initialTime, setInitialTime] = useState<number>(0);
+  const workerRef = useRef<Worker | null>(null);
 
   const [isWon, setIsWon] = useState<boolean>(false);
   const [rewards, setRewards] = useState<RewardSummary | null>(null);
@@ -155,17 +146,16 @@ function GameContent() {
   const [newRankId, setNewRankId] = useState<string | null>(null);
 
   const [showSettings, setShowSettings] = useState(false);
-
-  // Intermission State
   const [showIntermission, setShowIntermission] = useState(false);
-
-  // Game Over Processing Lock
   const [gameOverProcessed, setGameOverProcessed] = useState(false);
 
   // Artifact State
   const [frozenUntil, setFrozenUntil] = useState(0); 
   const [lensNumber, setLensNumber] = useState<number | null>(null); 
-  const [viewingArtifact, setViewingArtifact] = useState<string | null>(null); // [NEW] Info Modal State
+  const [viewingArtifact, setViewingArtifact] = useState<string | null>(null); 
+  
+  // [NEW] Zen Mode UI State
+  const [isUIHidden, setIsUIHidden] = useState(false);
 
   // Game Over Logic
   const isGameOver = isExpedition 
@@ -197,25 +187,22 @@ function GameContent() {
     return getCompletedRegions(boardState, solution);
   }, [boardState, solution]);
 
-  // [NEW] Logic: Stellar Siphon (Reward on box complete)
+  // Logic: Stellar Siphon
   useEffect(() => {
     const current = completedRegions;
     const prev = prevRegionsRef.current;
     if (current.size > prev.size) {
         const diff = new Set([...current].filter(x => !prev.has(x)));
         
-        // Handle Visuals
         if (diff.size > 0 && highlightCompletions && isGameActive && mounted) {
             playSfx('chord'); 
             setTransientRegions(prevTr => { const next = new Set(prevTr); diff.forEach(d => next.add(d)); return next; });
             setTimeout(() => { setTransientRegions(prevTr => { const next = new Set(prevTr); diff.forEach(d => next.delete(d)); return next; }); }, 1500);
         }
 
-        // Handle Artifact: Stellar Siphon
         if (isExpedition && isGameActive) {
             const hasSiphon = expedition.artifacts.includes('stellar_siphon');
             if (hasSiphon) {
-                // Check if any new region is a box
                 const newBoxes = [...diff].filter(r => r.startsWith('box-'));
                 if (newBoxes.length > 0) {
                     playSfx('success');
@@ -227,8 +214,23 @@ function GameContent() {
     prevRegionsRef.current = current;
   }, [completedRegions, highlightCompletions, isGameActive, mounted, isExpedition, expedition.artifacts, addCurrency]);
 
+  // --- WORKER & INIT ---
+  useEffect(() => {
+    workerRef.current = new Worker(new URL('./sudoku.worker.ts', import.meta.url));
+    workerRef.current.onmessage = (event) => {
+      const { type, result } = event.data;
+      if (type === 'GENERATED') {
+        const { initial, solved } = result;
+        setInitialBoard(initial);
+        setSolution(solved);
+        setBoardState(initial.map((row: number[]) => [...row]));
+      }
+    };
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, []);
 
-  // --- INIT ---
   useEffect(() => {
     setMounted(true);
     refreshPerks(); 
@@ -238,6 +240,39 @@ function GameContent() {
     const visualDiff = (activeMode === 'Daily' || activeMode === 'Expedition') ? 'Standard' : activeMode;
     setThemeDifficulty(visualDiff as any);
   }, [activeMode, setThemeDifficulty]);
+
+  // --- ZEN MODE LOGIC ---
+  useEffect(() => {
+    if (!zenMode) {
+      setIsUIHidden(false);
+      return;
+    }
+
+    let timeout: NodeJS.Timeout;
+    const resetTimer = () => {
+      setIsUIHidden(false);
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        // Only hide if game is active and not won/lost
+        if (isGameActive) setIsUIHidden(true);
+      }, 5000); // 5 seconds inactivity
+    };
+
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('click', resetTimer);
+    
+    resetTimer();
+
+    return () => {
+      clearTimeout(timeout);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('touchstart', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('click', resetTimer);
+    };
+  }, [zenMode, isGameActive]);
 
   const startNewGame = useCallback(() => {
     const shouldResume = searchParams.get("resume") === "true";
@@ -252,7 +287,7 @@ function GameContent() {
       setBoardState(savedGame.boardState);
       setMistakes(savedGame.mistakes);
       
-      setTimeElapsed(savedGame.timeElapsed);
+      setInitialTime(savedGame.timeElapsed);
       timeRef.current = savedGame.timeElapsed;
       cellTimesRef.current = savedGame.cellTimes || {};
 
@@ -270,35 +305,34 @@ function GameContent() {
       setGameOverProcessed(false);
       prevRegionsRef.current = new Set();
     } else {
-      console.log(`Generating new ${searchMode} game...`);
+      console.log(`Requesting new ${searchMode} game from worker...`);
       setActiveMode(searchMode); 
       
       if (savedGame && !savedGame.isGameOver && !savedGame.isWon && savedGame.mistakes > 0) {
         storeState.updateElo(-5);
       }
 
-      let initialGrid, solvedGrid;
-      
+      setInitialBoard(null);
+      setBoardState(null);
+      setSolution(null);
+
+      let holes = GAME_CONFIG[searchMode].holes;
+      let seed: string | undefined = undefined;
+
       if (searchMode === 'Daily') {
-          const todayStr = new Date().toISOString().split('T')[0];
-          const result = generateDailyBoard(todayStr);
-          initialGrid = result.initial;
-          solvedGrid = result.solved;
+          seed = new Date().toISOString().split('T')[0];
+          holes = 40; 
       } else if (searchMode === 'Expedition') {
           const sector = useStore.getState().expedition.sector || 1;
-          const holes = Math.min(60, 52 + Math.floor(sector / 2));
-          const result = generateSudoku(holes);
-          initialGrid = result.initial;
-          solvedGrid = result.solved;
-      } else {
-          const result = generateSudoku(GAME_CONFIG[searchMode].holes);
-          initialGrid = result.initial;
-          solvedGrid = result.solved;
+          holes = Math.min(60, 52 + Math.floor(sector / 2));
       }
+
+      workerRef.current?.postMessage({
+        type: 'GENERATE',
+        holes,
+        seed
+      });
       
-      setInitialBoard(initialGrid);
-      setSolution(solvedGrid);
-      setBoardState(initialGrid.map(row => [...row]));
       setMistakes(0);
       setErrorCells(new Set());
       setNotes({});
@@ -306,7 +340,7 @@ function GameContent() {
       
       cellTimesRef.current = {};
       timeRef.current = 0;
-      setTimeElapsed(0);
+      setInitialTime(0);
       setFrozenUntil(0);
       setLensNumber(null);
 
@@ -322,7 +356,6 @@ function GameContent() {
       
       clearGame();
 
-      // [NEW] Apply Curses on Start
       if (searchMode === 'Expedition') {
           const arts = useStore.getState().expedition.artifacts;
           if (arts.includes('blood_pact')) {
@@ -374,9 +407,8 @@ function GameContent() {
 
   // --- GAME OVER ---
   useEffect(() => {
-    // Check lock to prevent infinite loop
     if (isGameOver && !gameOverProcessed) {
-      setGameOverProcessed(true); // Lock immediately
+      setGameOverProcessed(true); 
       playSfx('gameover'); 
       
       if (activeMode === 'Expedition') {
@@ -385,7 +417,6 @@ function GameContent() {
          return;
       }
 
-      // [CRITICAL FIX] Fetch ELO directly from store state to avoid dependency cycle
       const currentElo = useStore.getState().elo;
 
       const result = calculateGameRewards({
@@ -403,23 +434,9 @@ function GameContent() {
       
       pushSync(); 
     }
-    // [CRITICAL] 'elo' removed from dependency array to prevent infinite loop
   }, [isGameOver, gameOverProcessed, clearGame, activeMode, mistakes, updateElo, addXp, incrementStats, pushSync, endExpedition]);
 
   // --- TIMERS ---
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isGameActive && boardState) {
-      interval = setInterval(() => {
-        if (Date.now() < frozenUntil) return;
-        
-        timeRef.current += 1;
-        setTimeElapsed(timeRef.current);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isGameActive, boardState, frozenUntil]);
-
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isGameActive && selectedCell) {
@@ -436,7 +453,6 @@ function GameContent() {
   const handleArtifactUse = (artifact: Artifact) => {
     if (!isExpedition || !artifact) return;
     
-    // [NEW] Passive/Cursed Artifacts open Info Modal on click
     if (artifact.type === 'Passive' || artifact.type === 'Cursed') {
         setViewingArtifact(artifact.id);
         return;
@@ -448,10 +464,9 @@ function GameContent() {
          return;
     }
 
-    // --- APPLY EFFECTS ---
     if (artifact.effectId === 'freeze') {
         playSfx('ice-shatter'); 
-        setFrozenUntil(Date.now() + 30000); // 30s
+        setFrozenUntil(Date.now() + 30000); 
         consumeCharge(artifact.id, state, artifact.maxUses);
     }
     else if (artifact.effectId === 'reveal_number') {
@@ -465,24 +480,18 @@ function GameContent() {
         consumeCharge(artifact.id, state, artifact.maxUses);
     }
     else if (artifact.effectId === 'auto_notes') {
-        // [NEW] Nano Scribe Logic
         if (!solution || !boardState) return;
         playSfx('scan');
         
         const newNotes = { ...notes };
-        // Calculate all valid notes
         for (let r = 0; r < 9; r++) {
             for (let c = 0; c < 9; c++) {
                 if (boardState[r][c] === 0) {
                     const validNums = [];
                     for (let n = 1; n <= 9; n++) {
-                        // Check row, col, box manually
                         let valid = true;
-                        // Row
                         if (boardState[r].includes(n)) valid = false;
-                        // Col
                         if (valid) { for(let i=0; i<9; i++) if(boardState[i][c] === n) valid = false; }
-                        // Box
                         if (valid) {
                            const br = Math.floor(r/3)*3; const bc = Math.floor(c/3)*3;
                            for(let i=0;i<3;i++) for(let j=0;j<3;j++) if(boardState[br+i][bc+j] === n) valid = false;
@@ -497,10 +506,8 @@ function GameContent() {
         consumeCharge(artifact.id, state, artifact.maxUses);
     }
     else if (artifact.effectId === 'auto_solve_1') {
-        // [NEW] Quantum Key
         if (!solution || !boardState) return;
         
-        // Find all empty cells
         const empties = [];
         for(let r=0;r<9;r++) for(let c=0;c<9;c++) if(boardState[r][c] === 0) empties.push({r,c});
         
@@ -513,7 +520,6 @@ function GameContent() {
     }
     else if (artifact.effectId === 'validate_board') {
         playSfx('scan');
-        // Logic for Drone would go here
         consumeCharge(artifact.id, state, artifact.maxUses);
     }
   };
@@ -532,52 +538,40 @@ function GameContent() {
     router.push('/dashboard');
   };
 
-  // Logic to start next sector and recharge artifacts
   const handleNextSector = () => {
-     // 1. Recharge 'PerPuzzle' artifacts
      const nextArtifactState = { ...expedition.artifactState };
-     
      expedition.artifacts.forEach(id => {
         const art = ARTIFACTS.find(a => a.id === id);
         if (art && art.cooldownType === 'PerPuzzle' && art.maxUses) {
-            // Restore full charges
             nextArtifactState[id] = { 
                 ...nextArtifactState[id], 
                 usesLeft: art.maxUses 
             };
         }
      });
-
-     // 2. Update Store
      updateExpedition({ 
          sector: expedition.sector + 1,
          artifactState: nextArtifactState
      });
-
-     // 3. Reset Game State
      startNewGame(); 
   };
 
-  // [NEW] Cash Out Handler
   const handleCashOut = () => {
       const sector = expedition.sector;
       const payoutStardust = 100 + (sector * 50);
       const payoutShards = Math.floor(sector / 2) + 1;
-
       addCurrency('stardust', payoutStardust);
       addCurrency('cometShards', payoutShards);
       addXp(sector * 100);
-
       endExpedition();
       pushSync();
       router.push('/dashboard');
   };
 
-  // Wrapper to show Intermission before Next Sector
   const handleVictoryContinue = () => {
       if (isExpedition) {
           setShowIntermission(true);
-          setIsWon(false); // Hide Victory Modal
+          setIsWon(false); 
       } else {
           startNewGame();
       }
@@ -585,17 +579,22 @@ function GameContent() {
 
   const saveToHistory = useCallback(() => {
     if (!boardState) return;
-    setHistory(p => [...p, { board: boardState.map(r => [...r]), notes: { ...notes } }]);
+    setHistory(p => {
+        // [ROBUSTNESS] Cap history at 50 moves to prevent LocalStorage quota exceeded errors
+        const newHistory = [...p, { board: boardState.map(r => [...r]), notes: { ...notes } }];
+        if (newHistory.length > 50) {
+            return newHistory.slice(newHistory.length - 50);
+        }
+        return newHistory;
+    });
   }, [boardState, notes]);
 
   const handleUndo = useCallback(() => {
     if (!isGameActive || history.length === 0) return;
-    
     const prev = history[history.length - 1];
     setBoardState(prev.board);
     setNotes(prev.notes);
     setHistory(p => p.slice(0, -1));
-
     if (solution) {
       const newErrors = new Set<string>();
       prev.board.forEach((row, r) => {
@@ -618,7 +617,28 @@ function GameContent() {
     return true;
   }, []);
 
-  // --- INPUT & VICTORY LOGIC ---
+  // [NEW] Smart Note Handler
+  const handleCellNote = useCallback((row: number, col: number) => {
+      if (!isGameActive || !boardState || boardState[row][col] !== 0) return;
+
+      // Logic: If in digit-first mode with a number selected, toggle that specific note
+      if (inputMode === 'digit-first' && activeNumber) {
+          playSfx('click');
+          saveToHistory();
+          const key = `${row}-${col}`;
+          const curr = notes[key] || [];
+          const newNotes = curr.includes(activeNumber)
+              ? curr.filter(n => n !== activeNumber)
+              : [...curr, activeNumber];
+          setNotes(p => ({ ...p, [key]: newNotes }));
+      } else {
+          // Otherwise, select the cell and toggle Global Note Mode so user can type
+          playSfx('click');
+          setSelectedCell({ row, col });
+          setIsNoteMode(prev => !prev);
+      }
+  }, [isGameActive, boardState, inputMode, activeNumber, notes, saveToHistory]);
+
   const handleInput = useCallback((num: number, target?: {row: number, col: number}) => {
     const cell = target || selectedCell;
     if (!isGameActive || !cell || !boardState || !initialBoard || !solution) return;
@@ -646,11 +666,9 @@ function GameContent() {
 
     if (num === solution[row][col]) {
       playSfx('input'); 
-
       const newBoard = boardState.map(r => [...r]);
       newBoard[row][col] = num;
       setBoardState(newBoard);
-      
       const newErrors = new Set(errorCells);
       newErrors.delete(`${row}-${col}`);
       setErrorCells(newErrors);
@@ -679,8 +697,6 @@ function GameContent() {
 
       if (checkVictory(newBoard, solution)) {
         playSfx('victory'); 
-        
-        // 1. Calculate Rewards
         const baseRewards = calculateGameRewards({
           mode: activeMode === 'Daily' ? 'Standard' : (activeMode as any),
           timeElapsed: timeRef.current,
@@ -689,7 +705,6 @@ function GameContent() {
           currentElo: elo
         });
 
-        // 2. DAILY CHALLENGE SUBMISSION
         if (activeMode === 'Daily') {
             const todayStr = new Date().toISOString().split('T')[0];
             fetch('/api/daily/submit', {
@@ -703,7 +718,6 @@ function GameContent() {
             }).catch(err => console.error("Daily Submit Failed", err));
         }
 
-        // 3. Apply Local Progression
         if (!isExpedition) {
             addHistoryStar();
             updateElo(baseRewards.eloChange);
@@ -715,11 +729,9 @@ function GameContent() {
             incrementStats(true, activeMode as any, timeRef.current, mistakes);
             updateStreak(); 
         } else {
-             // [NEW] Cursed Multiplier Logic
              let xpMult = 1;
              let dustMult = 1;
              const artifacts = useStore.getState().expedition.artifacts;
-             
              artifacts.forEach(id => {
                  const a = ARTIFACTS.find(art => art.id === id);
                  if (a?.rewardMultiplier) {
@@ -727,8 +739,6 @@ function GameContent() {
                      if (a.rewardMultiplier.stardust) dustMult *= a.rewardMultiplier.stardust;
                  }
              });
-
-             // Apply Multiplied Rewards
              addXp(50 * xpMult);
              addCurrency('stardust', 20 * dustMult);
         }
@@ -762,14 +772,12 @@ function GameContent() {
             stardust: uiStardust,
             bonuses: bonuses
         });
-        
         setIsWon(true);
         clearGame(); 
         pushSync();
       }
 
     } else {
-      // MISTAKE LOGIC
       let blocked = false;
       if (isExpedition) {
           const aegisId = expedition.artifacts.find(id => id.includes('aegis')); 
@@ -791,7 +799,6 @@ function GameContent() {
 
       if (!blocked) {
           playSfx('error'); 
-          
           if (isExpedition) {
               const newLives = expedition.lives - 1;
               if (newLives <= 0) {
@@ -838,7 +845,6 @@ function GameContent() {
     expedition, updateExpedition
   ]);
 
-  // [NEW] Blindfold Curse Logic
   const showNoteButton = !isExpedition || !expedition.artifacts.includes('blind_fold');
 
   const handleCellClick = (row: number, col: number) => {
@@ -904,7 +910,7 @@ function GameContent() {
     setIsClient(true);
   }, []);
 
-  if (!isClient) return null; // [FIX] Prevents SSR crash with unstable_prefetch
+  if (!isClient) return null;
 
   if (!boardState || !initialBoard) {
     return (
@@ -919,7 +925,6 @@ function GameContent() {
     <main 
       className="relative flex min-h-screen flex-col items-center justify-center px-1 py-4 md:p-4 pb-8 transition-colors duration-1000 overflow-hidden"
     >
-      {/* BACKGROUND PULSE FOR EXPEDITION */}
       {isExpedition && (
          <div className="absolute inset-0 pointer-events-none bg-indigo-900/10 animate-pulse-slow" />
       )}
@@ -927,10 +932,8 @@ function GameContent() {
       {showDailyRewardModal && <DailyRewardModal />}
       {showLevelUp && newRankId && <LevelUpModal newRankId={newRankId} onClose={() => setShowLevelUp(false)} />}
       
-      {/* GAME OVER */}
       {isGameOver && <GameOverModal onRetry={startNewGame} isExpedition={isExpedition} />}
       
-      {/* INTERMISSION (Void Supply Station) */}
       {showIntermission && (
           <ExpeditionIntermissionModal 
              sector={expedition.sector}
@@ -939,7 +942,6 @@ function GameContent() {
           />
       )}
       
-      {/* VICTORY MODAL */}
       {isWon && !showIntermission && (
          <VictoryModal 
             timeElapsed={timeRef.current} 
@@ -955,11 +957,10 @@ function GameContent() {
 
       {showSettings && <GameSettingsModal onClose={() => setShowSettings(false)} />}
 
-      {/* [NEW] Artifact Info Modal */}
       {viewingArtifact && <ArtifactInfoModal artifactId={viewingArtifact} onClose={() => setViewingArtifact(null)} />}
 
-      {/* TOP BAR */}
-      <div className="flex w-full max-w-lg items-center justify-between mb-6 px-1 relative z-10">
+      {/* TOP BAR - [UPDATED] Zen Mode Visibilty */}
+      <div className={`flex w-full max-w-lg items-center justify-between mb-6 px-1 relative z-10 transition-all duration-500 ${isUIHidden ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
         <button onClick={handleExit} className="text-white/50 hover:text-white transition">← Exit</button>
         
         <div className="flex items-center gap-4">
@@ -969,18 +970,30 @@ function GameContent() {
           
           <div className={`font-mono text-sm w-16 text-center ${isTimerFrozen ? 'text-blue-400 animate-pulse' : 'text-white/80'}`}>
              {mounted && timerVisible 
-                ? formatTime(timeElapsed) 
+                ? <GameTimer 
+                    start={initialTime} 
+                    isPaused={!isGameActive || isTimerFrozen} 
+                    onTimeUpdate={(s) => timeRef.current = s} 
+                  />
                 : <span className="text-white/20 text-xs">HIDDEN</span>
              }
           </div>
           
-          {/* LIVES INDICATOR */}
+          {/* LIVES INDICATOR - [UPDATED] Visual Hearts for Expedition */}
           <div className={`font-mono text-sm font-bold flex items-center gap-1 ${isExpedition ? 'text-indigo-400' : (mistakes >= currentMaxLives ? "text-neon-red" : "text-neon-cyan")}`}>
               {isExpedition ? (
-                  <>
-                    <Hexagon size={16} className="fill-current" />
-                    <span>{expedition.lives}</span>
-                  </>
+                  <div className="flex gap-1 items-center" title={`${expedition.lives} Lives Remaining`}>
+                    {/* Render up to 5 visual hearts */}
+                    {Array.from({ length: Math.min(5, expedition.maxLives) }).map((_, i) => (
+                        <Heart
+                            key={i}
+                            size={16}
+                            className={`${i < expedition.lives ? "fill-neon-red text-neon-red" : "fill-none text-white/20"}`}
+                        />
+                    ))}
+                    {/* Text fallback for high health */}
+                    {expedition.maxLives > 5 && <span className="text-xs ml-1">+{Math.max(0, expedition.lives - 5)}</span>}
+                  </div>
               ) : currentMaxLives === Infinity ? (
                  <span className="text-xl">∞</span>
               ) : (
@@ -997,9 +1010,8 @@ function GameContent() {
         </div>
       </div>
 
-      {/* EXPEDITION ARTIFACTS HUD */}
       {isExpedition && expedition.artifacts.length > 0 && (
-         <div className="flex gap-2 mb-4 animate-slide-down">
+         <div className={`flex gap-2 mb-4 animate-slide-down transition-opacity duration-500 ${isUIHidden ? 'opacity-0' : 'opacity-100'}`}>
              {expedition.artifacts.map(id => {
                  const art = ARTIFACTS.find(a => a.id === id);
                  if (!art) return null;
@@ -1007,7 +1019,6 @@ function GameContent() {
                  const uses = state.usesLeft ?? art.maxUses ?? 0;
                  const isActive = art.type === 'Active' && uses > 0;
                  
-                 // Icon Mapping
                  let Icon = Hexagon;
                  if (art.effectId === 'freeze') Icon = Hourglass;
                  if (art.effectId === 'reveal_number') Icon = Eye;
@@ -1037,14 +1048,12 @@ function GameContent() {
          </div>
       )}
 
-      {/* GRID */}
       <div className={`
         w-full relative
         transition-all duration-1000 
         ${!isGameActive && !isWon ? "opacity-30 pointer-events-none filter blur-sm" : ""}
         ${isWon ? "scale-105" : ""}
       `}>
-        {/* FROZEN OVERLAY - [FIXED] Removed Blur */}
         {isTimerFrozen && (
             <div className="absolute inset-0 z-20 pointer-events-none flex items-center justify-center">
                  <div className="bg-blue-900/80 text-blue-200 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-xl animate-pulse">
@@ -1057,19 +1066,21 @@ function GameContent() {
           initialBoard={initialBoard}
           boardState={boardState}
           selectedCell={selectedCell}
-          onCellClick={handleCellClick} 
+          onCellClick={handleCellClick}
+          onCellNote={handleCellNote} // [NEW] Pass Smart Note Handler
           errorCells={errorCells}
           notes={notes}
           transientRegions={highlightCompletions ? transientRegions : undefined}
-          activeNumber={lensNumber !== null ? lensNumber : activeNumber} // Lens Override
+          activeNumber={lensNumber !== null ? lensNumber : activeNumber} 
         />
       </div>
 
-      {/* INPUTS */}
+      {/* CONTROLS - [UPDATED] Zen Mode Visibility */}
       <div className={`
         w-full max-w-lg flex flex-col gap-6 mt-6 mx-auto items-center 
         transition-all duration-500 
         ${!isGameActive ? "opacity-0 pointer-events-none translate-y-10" : ""}
+        ${isUIHidden ? "opacity-0 pointer-events-none translate-y-4" : ""}
       `}>
         <NumberPad 
           onNumberClick={handleNumberPadClick} 
@@ -1081,7 +1092,6 @@ function GameContent() {
         <div className="flex gap-4 w-full justify-center">
           <Button variant="secondary" className="w-1/3" onClick={handleUndo} disabled={history.length === 0}>Undo</Button>
           
-          {/* [NEW] Note Button visibility (Blindfold Curse) */}
           {showNoteButton && (
              <Button variant={isNoteMode ? "primary" : "secondary"} className="w-1/3" onClick={() => setIsNoteMode(!isNoteMode)}>
                 {isNoteMode ? "Note: ON" : "Note"}

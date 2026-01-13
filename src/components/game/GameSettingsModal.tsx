@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { X, Volume2, VolumeX, Eye, EyeOff, Eraser, Type, MousePointerClick, Sparkles } from "lucide-react";
+import { X, Volume2, VolumeX, Eye, EyeOff, Eraser, Type, MousePointerClick, Sparkles, Moon } from "lucide-react";
 import { useStore } from "@/lib/store";
 
 type GameSettingsModalProps = {
@@ -15,6 +15,7 @@ export default function GameSettingsModal({ onClose }: GameSettingsModalProps) {
     inputMode, toggleInputMode,
     textSize, toggleTextSize,
     highlightCompletions, toggleHighlightCompletions,
+    zenMode, toggleZenMode, // [NEW]
   } = useStore();
 
   return (
@@ -65,6 +66,13 @@ export default function GameSettingsModal({ onClose }: GameSettingsModalProps) {
             <div className="space-y-4">
                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Gameplay</h3>
                 
+                <ToggleRow 
+                    icon={<Moon size={18} />}
+                    label="Focus Mode (Zen)"
+                    isActive={zenMode}
+                    onToggle={toggleZenMode}
+                    color="bg-violet-400"
+                />
                 <ToggleRow 
                     icon={<MousePointerClick size={18} />}
                     label="Digit-First Input"
