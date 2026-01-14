@@ -109,7 +109,9 @@ export async function POST(req: Request) {
         p.themesLastUpdated = body.themesLastUpdated || Date.now();
     }
 
-    // --- 2. STATS MERGE ---
+    // --- 2. STATS MERGE (CRITICAL UPDATE) ---
+    
+    // A. General Stats: Timestamp Wins (Latest = Greatest)
     if (shouldUpdate(body.statsLastUpdated, s.statsLastUpdated)) {
         const incStats = body.stats || {};
         s.gamesPlayed = incStats.gamesPlayed ?? s.gamesPlayed;
@@ -117,26 +119,28 @@ export async function POST(req: Request) {
         s.flawlessWins = incStats.flawlessWins ?? s.flawlessWins;
         s.currentStreak = incStats.currentStreak ?? s.currentStreak;
         s.lastPlayedDate = incStats.lastPlayedDate ?? s.lastPlayedDate;
-        
-        if (incStats.bestTimes) {
-            s.bestTimeRelaxed = incStats.bestTimes.Relaxed ?? s.bestTimeRelaxed;
-            s.bestTimeStandard = incStats.bestTimes.Standard ?? s.bestTimeStandard;
-            s.bestTimeMastery = incStats.bestTimes.Mastery ?? s.bestTimeMastery;
-        }
         s.statsLastUpdated = body.statsLastUpdated;
-    } else {
-        if (body.stats?.bestTimes) {
-            const checkBetter = (dbField: string, incomingVal: number | null) => {
-                // @ts-ignore
-                if (incomingVal && (s[dbField] === null || incomingVal < s[dbField])) {
-                    // @ts-ignore
-                    s[dbField] = incomingVal;
-                }
-            };
-            checkBetter('bestTimeRelaxed', body.stats.bestTimes.Relaxed);
-            checkBetter('bestTimeStandard', body.stats.bestTimes.Standard);
-            checkBetter('bestTimeMastery', body.stats.bestTimes.Mastery);
-        }
+    }
+
+    // B. Best Times: Minimum Value Wins (Lowest = Greatest)
+    // We check this INDEPENDENTLY of the timestamp to prevent overwriting a record with a slower time.
+    if (body.stats?.bestTimes) {
+         const mergeBest = (dbField: string, incomingVal: number | null) => {
+             // @ts-ignore
+             const current = s[dbField];
+             
+             if (incomingVal !== null && incomingVal !== undefined) {
+                 // Update if DB is empty OR incoming is faster (lower)
+                 if (current === null || current === undefined || incomingVal < current) {
+                     // @ts-ignore
+                     s[dbField] = incomingVal;
+                 }
+             }
+         };
+
+         mergeBest('bestTimeRelaxed', body.stats.bestTimes.Relaxed);
+         mergeBest('bestTimeStandard', body.stats.bestTimes.Standard);
+         mergeBest('bestTimeMastery', body.stats.bestTimes.Mastery);
     }
 
     // --- 3. SETTINGS MERGE ---
@@ -149,7 +153,7 @@ export async function POST(req: Request) {
         set.inputMode = incSet.inputMode ?? set.inputMode;
         set.textSize = incSet.textSize ?? set.textSize;
         set.highlightCompletions = incSet.highlightCompletions ?? set.highlightCompletions;
-        set.zenMode = incSet.zenMode ?? set.zenMode; // [ADDED] Zen Mode Sync
+        set.zenMode = incSet.zenMode ?? set.zenMode; 
         set.settingsLastUpdated = body.settingsLastUpdated;
     }
 

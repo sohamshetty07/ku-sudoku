@@ -525,6 +525,14 @@ export const useStore = create<UserStore>()(
                flawlessWins: s.statsLastUpdated > prev.statsLastUpdated ? s.flawlessWins : prev.flawlessWins,
                currentStreak: s.statsLastUpdated > prev.statsLastUpdated ? s.currentStreak : prev.currentStreak,
                lastPlayedDate: s.statsLastUpdated > prev.statsLastUpdated ? s.lastPlayedDate : prev.lastPlayedDate,
+               
+               // [CRITICAL FIX] Map Flat DB Fields -> Nested Store Object
+               bestTimes: {
+                  Relaxed: s.bestTimeRelaxed ?? prev.bestTimes.Relaxed,
+                  Standard: s.bestTimeStandard ?? prev.bestTimes.Standard,
+                  Mastery: s.bestTimeMastery ?? prev.bestTimes.Mastery
+               },
+
                statsLastUpdated: Math.max(s.statsLastUpdated, prev.statsLastUpdated),
 
                // Settings Merge
