@@ -48,7 +48,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "Ku Sudoku",
     title: "Ku | Sudoku Game",
-    description: "Master the grid. Unlock the levels.",
+    description: "Master the grid. Enter the void.",
     // images: [{ url: '/og-image.png' }], // Add this later for polish
   },
   twitter: {
